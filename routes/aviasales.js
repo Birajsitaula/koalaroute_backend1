@@ -17,6 +17,7 @@ router.post("/search", async (req, res) => {
       currency = "usd",
       limit = 10,
     } = req.query;
+    //test
 
     if (!origin || !destination || !departure_at) {
       return res.status(400).json({
