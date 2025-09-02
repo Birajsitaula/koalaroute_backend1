@@ -16,13 +16,14 @@ router.post("/search", async (req, res) => {
       return_at,
       currency = "usd",
       limit = 10,
-    } = req.query;
-    //test
+    } = req.body;
 
     if (!origin || !destination || !departure_at) {
-      return res.status(400).json({
-        error: "Origin, destination, and departure date are required",
-      });
+      return res
+        .status(400)
+        .json({
+          error: "Origin, destination, and departure date are required",
+        });
     }
 
     const response = await axios.get(API_URL, {
@@ -40,13 +41,15 @@ router.post("/search", async (req, res) => {
       },
     });
 
-    res.json(response.data);
+    res.json({ data: response.data.data });
   } catch (err) {
     console.error("Aviasales API error:", err.response?.data || err.message);
-    res.status(500).json({
-      error: "Flight search failed",
-      details: err.response?.data || err.message,
-    });
+    res
+      .status(500)
+      .json({
+        error: "Flight search failed",
+        details: err.response?.data || err.message,
+      });
   }
 });
 
