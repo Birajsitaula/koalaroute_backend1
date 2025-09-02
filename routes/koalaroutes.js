@@ -30,6 +30,7 @@ router.get("/dashboard", authMiddleware, (req, res) => {
   res.json({
     msg: "Welcome to KoalaRoute Dashboard 🚀",
     // userId: req.user.id,
+    // this is a test
   });
 });
 
