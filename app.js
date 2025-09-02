@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.js";
 import koalaRoute from "./routes/koalaroutes.js";
 import contactRoutes from "./routes/contact.js";
 import chatRouter from "./app/api/chat/route.js";
+import flightsRouter from "./routes/flights.js";
 
 dotenv.config();
 const app = express();
@@ -19,6 +20,7 @@ app.use("/api/chat", chatRouter);
 app.use("/api/auth", authRoutes);
 app.use("/api/koalaroute", koalaRoute);
 app.use("/api/contact", contactRoutes);
+app.use("/api/flights", flightsRouter);
 
 // MongoDB connection
 const mongoUri = process.env.MONGO_URI;
