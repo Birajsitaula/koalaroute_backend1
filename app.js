@@ -39,7 +39,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import authRoutes from "./routes/auth.js";
-import koalaRoute from "./routes/koalaroute.js";
+import koalaRoute from "./routes/koalaroutes.js";
 import contactRoutes from "./routes/contact.js";
 import chatRouter from "./app/api/chat/route.js";
 
