@@ -7,7 +7,7 @@ const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
 const API_KEY = process.env.AVIASALES_API_KEY;
 const MARKER = process.env.AVIASALES_MARKER;
 
-router.get("/search", async (req, res) => {
+router.post("/search", async (req, res) => {
   try {
     const {
       origin,
@@ -19,11 +19,9 @@ router.get("/search", async (req, res) => {
     } = req.query;
 
     if (!origin || !destination || !departure_at) {
-      return res
-        .status(400)
-        .json({
-          error: "Origin, destination, and departure date are required",
-        });
+      return res.status(400).json({
+        error: "Origin, destination, and departure date are required",
+      });
     }
 
     const response = await axios.get(API_URL, {
@@ -44,12 +42,10 @@ router.get("/search", async (req, res) => {
     res.json(response.data);
   } catch (err) {
     console.error("Aviasales API error:", err.response?.data || err.message);
-    res
-      .status(500)
-      .json({
-        error: "Flight search failed",
-        details: err.response?.data || err.message,
-      });
+    res.status(500).json({
+      error: "Flight search failed",
+      details: err.response?.data || err.message,
+    });
   }
 });
 
