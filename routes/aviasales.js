@@ -90,7 +90,7 @@ const MARKER = process.env.AVIASALES_MARKER;
 const SECRET = process.env.AVIASALES_SECRET;
 const LOCALE = "en";
 
-// Function to generate MD5 signature dynamically
+// Generate MD5 signature for Aviasales
 function generateSignature(marker, secret, host, userIp) {
   const stringToHash = marker + secret + host + userIp;
   return crypto.createHash("md5").update(stringToHash).digest("hex");
@@ -163,13 +163,11 @@ router.post("/search", async (req, res) => {
 
     const searchId =
       searchResponse.data?.search_id || searchResponse.data?.uuid;
-
     if (!searchId) {
       return res
         .status(500)
         .json({ error: "Failed to get search_id from Aviasales" });
     }
-
     console.log("Search initialized. search_id:", searchId);
 
     // Step 2: Poll results
@@ -183,9 +181,7 @@ router.post("/search", async (req, res) => {
         const resultsResponse = await axios.get(RESULTS_URL, {
           params: { uuid: searchId },
         });
-
         flights = resultsResponse.data?.proposals || [];
-
         if (flights.length === 0) {
           console.log(`Polling attempt ${attempts}, no flights yet...`);
           await new Promise((resolve) => setTimeout(resolve, 3000));
