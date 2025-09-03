@@ -13,6 +13,7 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: "*", credentials: true }));
+// some chages here
 app.use(express.json());
 
 // Routes
