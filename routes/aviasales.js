@@ -238,7 +238,7 @@ const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
 const MARKER = process.env.AVIASALES_MARKER;
-const TOKEN = process.env.AVIASALES_API_KEY;
+const TOKEN = process.env.AVIASALES_API_KEY; // CORRECTED: Changed to match your .env file
 const LOCALE = "en";
 
 // Logging to confirm environment variables are loaded
@@ -264,9 +264,9 @@ router.post("/search", async (req, res) => {
       destination,
       departure,
       returnDate,
-      passengers, // CORRECTED: Receive passengers as an object
+      passengers,
       tripClass,
-      currency = "usd", // Added currency with a default
+      currency = "usd",
     } = req.body;
 
     if (!origin || !destination || !departure) {
@@ -281,7 +281,6 @@ router.post("/search", async (req, res) => {
       locale: LOCALE,
       trip_class: tripClass,
       passengers: {
-        // CORRECTED: Use the full object received from the frontend
         adults: passengers.adults,
         children: passengers.children,
         infants: passengers.infants,
@@ -293,7 +292,7 @@ router.post("/search", async (req, res) => {
           date: departure,
         },
       ],
-      currency: currency.toUpperCase(), // Added currency to the Aviasales API payload
+      currency: currency.toUpperCase(),
     };
 
     if (returnDate) {
