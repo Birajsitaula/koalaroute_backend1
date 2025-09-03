@@ -86,11 +86,11 @@ const router = express.Router();
 const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
-const MARKER = process.env.AVIASALES_MARKER;
-const SECRET = process.env.AVIASALES_SECRET;
+const MARKER = process.env.AVIASALES_MARKER; // e.g., 662691
+const SECRET = process.env.AVIASALES_SECRET; // your real secret from Aviasales
 const LOCALE = "en";
 
-// Generate MD5 signature for Aviasales
+// Generate MD5 signature dynamically
 function generateSignature(marker, secret, host, userIp) {
   const stringToHash = marker + secret + host + userIp;
   return crypto.createHash("md5").update(stringToHash).digest("hex");
@@ -110,9 +110,7 @@ router.post("/search", async (req, res) => {
       tripClass = "Y",
     } = req.body;
 
-    const finalDeparture = departure || req.body.departure_at;
-
-    if (!origin || !destination || !finalDeparture) {
+    if (!origin || !destination || !departure) {
       return res
         .status(400)
         .json({
@@ -126,7 +124,7 @@ router.post("/search", async (req, res) => {
       {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        date: finalDeparture,
+        date: departure,
       },
     ];
 
@@ -139,7 +137,7 @@ router.post("/search", async (req, res) => {
     }
 
     const host = req.headers.host || "localhost";
-    const userIp = req.ip === "::1" ? "127.0.0.1" : req.ip;
+    const userIp = req.ip === "::1" ? "0.0.0.0" : req.ip; // Aviasales expects real IP
 
     const signature = generateSignature(MARKER, SECRET, host, userIp);
 
