@@ -82,80 +82,117 @@ import axios from "axios";
 
 const router = express.Router();
 
-const API_KEY = process.env.AVIASALES_API_KEY;
 const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
+const MARKER = process.env.AVIASALES_MARKER;
+const SIGNATURE = process.env.AVIASALES_SIGNATURE; // if required by Aviasales
+const LOCALE = "en";
 
-// Start a flight search
 router.post("/search", async (req, res) => {
   try {
     const {
       origin,
       destination,
-      depart_date,
-      departure_at, // frontend might send this instead
-      return_date,
-      currency = "usd",
-      adults = 1,
+      departure,
+      returnDate,
+      passengers = 1,
+      children = 0,
+      infants = 0,
+      tripClass = "Y",
     } = req.body;
 
-    // Normalize departure date (support both keys)
-    const finalDepartDate = depart_date || departure_at;
-
-    if (!origin || !destination || !finalDepartDate) {
+    if (!origin || !destination || !departure) {
       return res
         .status(400)
-        .json({ error: "Origin, destination, and depart_date are required" });
+        .json({
+          error: "Origin, destination, and departure date are required",
+        });
     }
 
-    // Step 1: Start the search
-    const searchResponse = await axios.get(API_URL, {
-      params: {
+    // Build passengers object
+    const passengersObj = {
+      adults: passengers,
+      children,
+      infants,
+    };
+
+    // Build segments array
+    const segments = [
+      {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        depart_date: finalDepartDate,
-        return_date,
-        currency,
-        adults,
-        token: API_KEY,
+        date: departure,
       },
-    });
+    ];
 
-    const search_id = searchResponse.data?.search_id;
-
-    if (!search_id) {
-      return res.status(500).json({ error: "Failed to initialize search" });
+    if (returnDate) {
+      segments.push({
+        origin: destination.toUpperCase(),
+        destination: origin.toUpperCase(),
+        date: returnDate,
+      });
     }
 
-    // Step 2: Poll for results
+    // Build search request payload
+    const host = req.headers.host || "localhost";
+    const userIp = req.ip || "127.0.0.1";
+
+    const payload = {
+      signature: SIGNATURE,
+      marker: MARKER,
+      host,
+      user_ip: userIp,
+      locale: LOCALE,
+      trip_class: tripClass,
+      passengers: passengersObj,
+      segments,
+    };
+
+    console.log("Sending search payload:", JSON.stringify(payload, null, 2));
+
+    // Step 1: Initialize search
+    const searchResponse = await axios.post(API_URL, payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const searchId =
+      searchResponse.data?.search_id || searchResponse.data?.uuid;
+
+    if (!searchId) {
+      return res
+        .status(500)
+        .json({ error: "Failed to get search_id from Aviasales" });
+    }
+
+    console.log("Search initialized. search_id:", searchId);
+
+    // Step 2: Poll results
     let attempts = 0;
-    let flights = [];
     const maxAttempts = 10;
+    let flights = [];
 
     while (attempts < maxAttempts && flights.length === 0) {
       attempts++;
 
       const resultsResponse = await axios.get(RESULTS_URL, {
-        params: {
-          uuid: search_id,
-          token: API_KEY,
-        },
+        params: { uuid: searchId },
       });
 
-      flights = resultsResponse.data?.data || [];
+      flights = resultsResponse.data?.proposals || [];
 
       if (flights.length === 0) {
-        // Wait 2 seconds before polling again
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        console.log(`Polling attempt ${attempts}, no flights yet...`);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
 
     if (flights.length === 0) {
       return res
         .status(404)
-        .json({ error: "No flights found. Please try again later." });
+        .json({ error: "No flights found after polling. Try again later." });
     }
 
+    // Return flights to frontend
     res.json({ data: flights });
   } catch (err) {
     console.error(
