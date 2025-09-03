@@ -87,13 +87,20 @@ const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
 const MARKER = process.env.AVIASALES_MARKER; // e.g., 662691
-const SECRET = process.env.AVIASALES_SECRET; // your real secret from Aviasales
+const API_KEY = process.env.AVIASALES_API_KEY; // your API key (used as token and secret)
 const LOCALE = "en";
 
-// Generate MD5 signature dynamically
+// Generate MD5 signature dynamically using API_KEY as secret
 function generateSignature(marker, secret, host, userIp) {
   const stringToHash = marker + secret + host + userIp;
   return crypto.createHash("md5").update(stringToHash).digest("hex");
+}
+
+// Get user IP safely
+function getUserIp(req) {
+  return (
+    req.headers["x-forwarded-for"] || req.connection.remoteAddress || "0.0.0.0"
+  );
 }
 
 // POST /api/aviasales/search
@@ -118,8 +125,10 @@ router.post("/search", async (req, res) => {
         });
     }
 
+    // Passengers object
     const passengersObj = { adults: passengers, children, infants };
 
+    // Build segments array
     const segments = [
       {
         origin: origin.toUpperCase(),
@@ -127,7 +136,6 @@ router.post("/search", async (req, res) => {
         date: departure,
       },
     ];
-
     if (returnDate) {
       segments.push({
         origin: destination.toUpperCase(),
@@ -136,14 +144,18 @@ router.post("/search", async (req, res) => {
       });
     }
 
+    // Host & user IP
     const host = req.headers.host || "localhost";
-    const userIp = req.ip === "::1" ? "0.0.0.0" : req.ip; // Aviasales expects real IP
+    const userIp = getUserIp(req);
 
-    const signature = generateSignature(MARKER, SECRET, host, userIp);
+    // Dynamic signature
+    const signature = generateSignature(MARKER, API_KEY, host, userIp);
 
+    // Build payload
     const payload = {
       signature,
       marker: MARKER,
+      token: API_KEY,
       host,
       user_ip: userIp,
       locale: LOCALE,
@@ -166,6 +178,7 @@ router.post("/search", async (req, res) => {
         .status(500)
         .json({ error: "Failed to get search_id from Aviasales" });
     }
+
     console.log("Search initialized. search_id:", searchId);
 
     // Step 2: Poll results
