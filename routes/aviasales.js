@@ -238,7 +238,7 @@ const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
 const MARKER = process.env.AVIASALES_MARKER;
-const TOKEN = process.env.AVIASALES_TOKEN;
+const TOKEN = process.env.AVIASALES_API_KEY;
 const LOCALE = "en";
 
 // Logging to confirm environment variables are loaded
