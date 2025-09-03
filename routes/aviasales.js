@@ -227,42 +227,46 @@
 import express from "express";
 import axios from "axios";
 import crypto from "crypto";
-import "dotenv/config";
+import dotenv from "dotenv";
+
+// Load environment variables from the .env file
+dotenv.config();
 
 const router = express.Router();
 
 const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
-// Note: Use environment variables to protect your keys
-const MARKER = process.env.AVIASALES_MARKER; // Your partner ID (e.g., 662691)
-const TOKEN = process.env.AVIASALES_TOKEN; // Your personal access token
+const MARKER = process.env.AVIASALES_MARKER;
+const TOKEN = process.env.AVIASALES_TOKEN;
 const LOCALE = "en";
 
-/**
- * Generates the MD5 signature for the Aviasales API.
- * The signature is a hash of the token and marker concatenated with a colon.
- * @param {string} token - Your personal access token.
- * @param {string} marker - Your Aviasales partner ID.
- * @returns {string} The MD5 signature.
- */
-function generateSignature(token, marker) {
-  const stringToHash = `${token}:${marker}`;
-  return crypto.createHash("md5").update(stringToHash).digest("hex");
-}
+// Logging to confirm environment variables are loaded
+console.log("--- Debugging Environment Variables ---");
+console.log("MARKER:", MARKER);
+console.log("TOKEN:", TOKEN);
+console.log("-------------------------------------");
 
 // POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
+    if (!MARKER || !TOKEN) {
+      console.error(
+        "Missing AVIASALES_MARKER or AVIASALES_TOKEN environment variables."
+      );
+      return res.status(500).json({
+        error: "Server configuration error: API keys are not set.",
+      });
+    }
+
     const {
       origin,
       destination,
       departure,
       returnDate,
-      adults = 1,
-      children = 0,
-      infants = 0,
-      tripClass = "Y",
+      passengers, // CORRECTED: Receive passengers as an object
+      tripClass,
+      currency = "usd", // Added currency with a default
     } = req.body;
 
     if (!origin || !destination || !departure) {
@@ -271,16 +275,16 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Pass required authentication data and search parameters
     const payload = {
       marker: MARKER,
       token: TOKEN,
       locale: LOCALE,
       trip_class: tripClass,
       passengers: {
-        adults,
-        children,
-        infants,
+        // CORRECTED: Use the full object received from the frontend
+        adults: passengers.adults,
+        children: passengers.children,
+        infants: passengers.infants,
       },
       segments: [
         {
@@ -289,9 +293,9 @@ router.post("/search", async (req, res) => {
           date: departure,
         },
       ],
+      currency: currency.toUpperCase(), // Added currency to the Aviasales API payload
     };
 
-    // Add return segment for round-trip search
     if (returnDate) {
       payload.segments.push({
         origin: destination.toUpperCase(),
@@ -300,8 +304,10 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Step 1: Initialize search
-    console.log("Initializing Aviasales search with payload:", payload);
+    console.log(
+      "Initializing Aviasales search with payload:",
+      JSON.stringify(payload, null, 2)
+    );
     const searchResponse = await axios.post(API_URL, payload, {
       headers: { "Content-Type": "application/json" },
     });
@@ -318,7 +324,6 @@ router.post("/search", async (req, res) => {
 
     console.log("Search initialized. search_id:", searchId);
 
-    // Step 2: Poll for results
     let attempts = 0;
     const maxAttempts = 15;
     let flights = [];
@@ -333,7 +338,6 @@ router.post("/search", async (req, res) => {
         const proposals = resultsResponse.data?.proposals;
 
         if (proposals) {
-          // Flatten the proposals into a single array of flights
           flights = Object.values(proposals).flat();
           if (flights.length > 0) {
             console.log(`Flights found after ${attempts} attempts.`);
@@ -345,7 +349,6 @@ router.post("/search", async (req, res) => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
       } catch (pollErr) {
         console.error(`Polling attempt ${attempts} failed:`, pollErr.message);
-        // Continue polling even if there's a temporary error
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
@@ -356,7 +359,6 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Sort flights by price
     const sortedFlights = flights.sort((a, b) => a.price - b.price);
 
     res.json({ data: sortedFlights });
