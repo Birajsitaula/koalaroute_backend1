@@ -79,16 +79,24 @@
 
 import express from "express";
 import axios from "axios";
+import crypto from "crypto";
 
 const router = express.Router();
 
 const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
+
 const MARKER = process.env.AVIASALES_MARKER;
-const SIGNATURE = process.env.AVIASALES_SIGNATURE; // optional
+const SECRET = process.env.AVIASALES_SECRET;
 const LOCALE = "en";
 
-// POST /search
+// Function to generate MD5 signature dynamically
+function generateSignature(marker, secret, host, userIp) {
+  const stringToHash = marker + secret + host + userIp;
+  return crypto.createHash("md5").update(stringToHash).digest("hex");
+}
+
+// POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
     const {
@@ -102,7 +110,6 @@ router.post("/search", async (req, res) => {
       tripClass = "Y",
     } = req.body;
 
-    // Accept both 'departure' or 'departure_at'
     const finalDeparture = departure || req.body.departure_at;
 
     if (!origin || !destination || !finalDeparture) {
@@ -113,10 +120,8 @@ router.post("/search", async (req, res) => {
         });
     }
 
-    // Build passengers object
     const passengersObj = { adults: passengers, children, infants };
 
-    // Build segments array
     const segments = [
       {
         origin: origin.toUpperCase(),
@@ -133,12 +138,13 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Host & user IP
     const host = req.headers.host || "localhost";
-    const userIp = req.ip || "127.0.0.1";
+    const userIp = req.ip === "::1" ? "127.0.0.1" : req.ip;
+
+    const signature = generateSignature(MARKER, SECRET, host, userIp);
 
     const payload = {
-      signature: SIGNATURE,
+      signature,
       marker: MARKER,
       host,
       user_ip: userIp,
@@ -173,15 +179,19 @@ router.post("/search", async (req, res) => {
 
     while (attempts < maxAttempts && flights.length === 0) {
       attempts++;
+      try {
+        const resultsResponse = await axios.get(RESULTS_URL, {
+          params: { uuid: searchId },
+        });
 
-      const resultsResponse = await axios.get(RESULTS_URL, {
-        params: { uuid: searchId },
-      });
+        flights = resultsResponse.data?.proposals || [];
 
-      flights = resultsResponse.data?.proposals || [];
-
-      if (flights.length === 0) {
-        console.log(`Polling attempt ${attempts}, no flights yet...`);
+        if (flights.length === 0) {
+          console.log(`Polling attempt ${attempts}, no flights yet...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      } catch (pollErr) {
+        console.log(`Polling attempt ${attempts} failed:`, pollErr.message);
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
