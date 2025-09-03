@@ -85,9 +85,10 @@ const router = express.Router();
 const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 const MARKER = process.env.AVIASALES_MARKER;
-const SIGNATURE = process.env.AVIASALES_SIGNATURE; // if required by Aviasales
+const SIGNATURE = process.env.AVIASALES_SIGNATURE; // optional
 const LOCALE = "en";
 
+// POST /search
 router.post("/search", async (req, res) => {
   try {
     const {
@@ -101,7 +102,10 @@ router.post("/search", async (req, res) => {
       tripClass = "Y",
     } = req.body;
 
-    if (!origin || !destination || !departure) {
+    // Accept both 'departure' or 'departure_at'
+    const finalDeparture = departure || req.body.departure_at;
+
+    if (!origin || !destination || !finalDeparture) {
       return res
         .status(400)
         .json({
@@ -110,18 +114,14 @@ router.post("/search", async (req, res) => {
     }
 
     // Build passengers object
-    const passengersObj = {
-      adults: passengers,
-      children,
-      infants,
-    };
+    const passengersObj = { adults: passengers, children, infants };
 
     // Build segments array
     const segments = [
       {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        date: departure,
+        date: finalDeparture,
       },
     ];
 
@@ -133,7 +133,7 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Build search request payload
+    // Host & user IP
     const host = req.headers.host || "localhost";
     const userIp = req.ip || "127.0.0.1";
 
@@ -148,7 +148,7 @@ router.post("/search", async (req, res) => {
       segments,
     };
 
-    console.log("Sending search payload:", JSON.stringify(payload, null, 2));
+    console.log("Aviasales search payload:", JSON.stringify(payload, null, 2));
 
     // Step 1: Initialize search
     const searchResponse = await axios.post(API_URL, payload, {
@@ -192,7 +192,6 @@ router.post("/search", async (req, res) => {
         .json({ error: "No flights found after polling. Try again later." });
     }
 
-    // Return flights to frontend
     res.json({ data: flights });
   } catch (err) {
     console.error(
