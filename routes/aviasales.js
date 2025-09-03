@@ -82,83 +82,86 @@ import axios from "axios";
 
 const router = express.Router();
 
-const API_URL = "https://api.travelpayouts.com/v1";
 const API_KEY = process.env.AVIASALES_API_KEY;
+const API_URL = "https://api.travelpayouts.com/v1/flight_search";
+const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
-// POST /api/flights/search
+// Start a flight search
 router.post("/search", async (req, res) => {
   try {
     const {
       origin,
       destination,
       depart_date,
+      departure_at, // frontend might send this instead
       return_date,
-      adults = 1,
-      children = 0,
-      infants = 0,
-      trip_class = 0, // 0=Economy, 1=Business, 2=First
       currency = "usd",
+      adults = 1,
     } = req.body;
 
-    if (!origin || !destination || !depart_date) {
+    // Normalize departure date (support both keys)
+    const finalDepartDate = depart_date || departure_at;
+
+    if (!origin || !destination || !finalDepartDate) {
       return res
         .status(400)
         .json({ error: "Origin, destination, and depart_date are required" });
     }
 
-    // Step 1: Start a search
-    const startRes = await axios.post(
-      `${API_URL}/flight_search`,
-      {
+    // Step 1: Start the search
+    const searchResponse = await axios.get(API_URL, {
+      params: {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        depart_date,
+        depart_date: finalDepartDate,
         return_date,
-        adults,
-        children,
-        infants,
-        trip_class,
         currency,
+        adults,
         token: API_KEY,
       },
-      { headers: { "Content-Type": "application/json" } }
-    );
+    });
 
-    const searchId = startRes.data?.search_id;
-    if (!searchId) {
-      return res.status(500).json({ error: "No search_id returned" });
+    const search_id = searchResponse.data?.search_id;
+
+    if (!search_id) {
+      return res.status(500).json({ error: "Failed to initialize search" });
     }
-
-    console.log("Search started with ID:", searchId);
 
     // Step 2: Poll for results
     let attempts = 0;
-    const maxAttempts = 10;
     let flights = [];
+    const maxAttempts = 10;
 
-    while (attempts < maxAttempts) {
+    while (attempts < maxAttempts && flights.length === 0) {
       attempts++;
 
-      const pollRes = await axios.get(
-        `${API_URL}/flight_search_results?uuid=${searchId}&token=${API_KEY}`
-      );
+      const resultsResponse = await axios.get(RESULTS_URL, {
+        params: {
+          uuid: search_id,
+          token: API_KEY,
+        },
+      });
 
-      if (pollRes.data?.success && pollRes.data?.data?.length > 0) {
-        flights = pollRes.data.data;
-        break;
+      flights = resultsResponse.data?.data || [];
+
+      if (flights.length === 0) {
+        // Wait 2 seconds before polling again
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-
-      console.log(`Polling attempt ${attempts}, no results yet...`);
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // wait 3 sec
     }
 
     if (flights.length === 0) {
-      return res.status(404).json({ error: "No flights found after polling" });
+      return res
+        .status(404)
+        .json({ error: "No flights found. Please try again later." });
     }
 
-    res.json({ flights });
+    res.json({ data: flights });
   } catch (err) {
-    console.error("Aviasales API error:", err.response?.data || err.message);
+    console.error(
+      "Aviasales Search API error:",
+      err.response?.data || err.message
+    );
     res.status(500).json({
       error: "Flight search failed",
       details: err.response?.data || err.message,
