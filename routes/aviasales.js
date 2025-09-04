@@ -224,65 +224,137 @@
 
 // export default router;
 
+// import express from "express";
+// import axios from "axios";
+// import dotenv from "dotenv";
+// dotenv.config();
+// const router = express.Router();
+// const TOKEN = process.env.AVIASALES_API_KEY;
+// const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
+// // GET /api/aviasales/prices?origin=DEL&destination=KTM&departure_at=2025-09-11&currency=usd&limit=10
+// router.get("/prices", async (req, res) => {
+//   try {
+//     if (!TOKEN) {
+//       return res.status(500).json({
+//         error: "Server configuration error: API key is not set.",
+//       });
+//     }
+//     const {
+//       origin,
+//       destination,
+//       departure_at,
+//       currency = "usd",
+//       limit = 10,
+//     } = req.query;
+//     if (!origin || !destination || !departure_at) {
+//       return res.status(400).json({
+//         error:
+//           "Missing required query parameters: origin, destination, departure_at",
+//       });
+//     }
+//     const response = await axios.get(API_URL, {
+//       params: {
+//         origin: origin.toUpperCase(),
+//         destination: destination.toUpperCase(),
+//         departure_at,
+//         token: TOKEN,
+//         currency,
+//         limit,
+//       },
+//       headers: {
+//         "Accept-Encoding": "gzip, deflate",
+//       },
+//     });
+
+//     if (!response.data.success) {
+//       return res.status(500).json({
+//         error: "API request failed",
+//         details: response.data.error || "Unknown error",
+//       });
+//     }
+//     // Return the flight price data
+//     res.json({ data: response.data.data });
+//   } catch (error) {
+//     console.error(
+//       "Aviasales API error:",
+//       error.response?.data || error.message
+//     );
+//     res.status(500).json({
+//       error: "Failed to fetch flight prices",
+//       details: error.response?.data || error.message,
+//     });
+//   }
+// });
+// export default router;
+
 import express from "express";
 import axios from "axios";
+import crypto from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
+
 const router = express.Router();
+const MARKER = process.env.AVIASALES_MARKER;
 const TOKEN = process.env.AVIASALES_API_KEY;
-const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
-// GET /api/aviasales/prices?origin=DEL&destination=KTM&departure_at=2025-09-11&currency=usd&limit=10
-router.get("/prices", async (req, res) => {
+
+function generateSignature(marker, host, token) {
+  return crypto
+    .createHash("md5")
+    .update(marker + host + token)
+    .digest("hex");
+}
+
+router.post("/search", async (req, res) => {
   try {
-    if (!TOKEN) {
-      return res.status(500).json({
-        error: "Server configuration error: API key is not set.",
-      });
-    }
-    const {
-      origin,
-      destination,
-      departure_at,
-      currency = "usd",
-      limit = 10,
-    } = req.query;
+    const { origin, destination, departure_at } = req.body;
+
     if (!origin || !destination || !departure_at) {
       return res.status(400).json({
-        error:
-          "Missing required query parameters: origin, destination, departure_at",
+        error: "Origin, destination, and departure_at are required",
       });
     }
-    const response = await axios.get(API_URL, {
-      params: {
-        origin: origin.toUpperCase(),
-        destination: destination.toUpperCase(),
-        departure_at,
-        token: TOKEN,
-        currency,
-        limit,
-      },
-      headers: {
-        "Accept-Encoding": "gzip, deflate",
-      },
-    });
 
-    if (!response.data.success) {
-      return res.status(500).json({
-        error: "API request failed",
-        details: response.data.error || "Unknown error",
-      });
-    }
-    // Return the flight price data
-    res.json({ data: response.data.data });
+    const host = req.headers.host || "koalaroute-backend1.onrender.com";
+    const user_ip = req.ip || "127.0.0.1";
+
+    const signature = generateSignature(MARKER, host, TOKEN);
+
+    const payload = {
+      signature,
+      marker: MARKER,
+      host,
+      user_ip,
+      locale: "en",
+      trip_class: "Y",
+      passengers: { adults: 1, children: 0, infants: 0 },
+      segments: [
+        {
+          origin: origin.toUpperCase(),
+          destination: destination.toUpperCase(),
+          date: departure_at,
+        },
+      ],
+    };
+
+    console.log("Payload sent to Aviasales:", payload);
+
+    const response = await axios.post(
+      "https://api.travelpayouts.com/v1/flight_search",
+      payload,
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    res.json(response.data);
   } catch (error) {
     console.error(
       "Aviasales API error:",
       error.response?.data || error.message
     );
     res.status(500).json({
-      error: "Failed to fetch flight prices",
+      error: "Failed to start flight search",
       details: error.response?.data || error.message,
     });
   }
 });
+
 export default router;
