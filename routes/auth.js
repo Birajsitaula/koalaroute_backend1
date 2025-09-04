@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import User from "../models/User.js";
+import Otp from "../models/Otp.js"; // New model
 import "dotenv/config";
 
 const router = express.Router();
@@ -27,72 +28,109 @@ const router = express.Router();
 // });
 
 // Temporary store for OTPs (in production use DB/Redis)
-const otpStore = {};
+// Configure nodemailer (use Gmail App Password or better: SendGrid/Mailgun)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.ADMIN_EMAIL, // your admin email
+    pass: process.env.ADMIN_EMAIL_PASSWORD, // app password
+  },
+});
 
-// Step 1: Send OTP to email
+// Send OTP
 router.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ msg: "User already exists" });
+    // Limit request frequency (1 OTP / minute)
+    const recentOtp = await Otp.findOne({ email });
+    if (recentOtp && Date.now() - recentOtp.createdAt < 60 * 1000) {
+      return res
+        .status(429)
+        .json({ msg: "Please wait before requesting another OTP." });
+    }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = await bcrypt.hash(otpCode, 10);
 
-    // Save OTP with expiry (5 minutes)
-    otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
-
-    // Setup nodemailer
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.ADMIN_EMAIL, // your Gmail
-        pass: process.env.ADMIN_PASSWORD, // App password
+    await Otp.findOneAndUpdate(
+      { email },
+      {
+        email,
+        otp: hashedOtp,
+        attempts: 0,
+        createdAt: Date.now(),
       },
-    });
+      { upsert: true, new: true }
+    );
 
+    // Send OTP via email
     await transporter.sendMail({
       from: process.env.ADMIN_EMAIL,
       to: email,
-      subject: "Your Verification Code",
-      text: `Your OTP is ${otp}. It expires in 5 minutes.`,
+      subject: "Your OTP Code",
+      text: `Your OTP code is: ${otpCode}. It expires in 5 minutes.`,
     });
 
-    res.json({ msg: "OTP sent to your email" });
+    res.json({ msg: "OTP sent successfully" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Failed to send OTP" });
   }
 });
 
-// Step 2: Verify OTP and create account
+// Signup (verify OTP)
 router.post("/signup", async (req, res) => {
   try {
     const { email, password, otp } = req.body;
 
-    const record = otpStore[email];
-    if (!record)
+    const otpRecord = await Otp.findOne({ email });
+    if (!otpRecord)
       return res
         .status(400)
-        .json({ msg: "No OTP found. Please request again." });
-    if (record.expires < Date.now())
+        .json({ msg: "OTP not found. Please request again." });
+
+    // Check expiry (5 min)
+    if (Date.now() - otpRecord.createdAt > 5 * 60 * 1000) {
+      await Otp.deleteOne({ email });
       return res
         .status(400)
         .json({ msg: "OTP expired. Please request again." });
-    if (record.otp !== otp) return res.status(400).json({ msg: "Invalid OTP" });
+    }
 
-    // OTP is valid -> create user
+    // Check attempts
+    if (otpRecord.attempts >= 3) {
+      await Otp.deleteOne({ email });
+      return res
+        .status(400)
+        .json({ msg: "Too many failed attempts. Please request new OTP." });
+    }
+
+    // Verify OTP
+    const isMatch = await bcrypt.compare(otp, otpRecord.otp);
+    if (!isMatch) {
+      otpRecord.attempts += 1;
+      await otpRecord.save();
+      return res.status(400).json({ msg: "Invalid OTP" });
+    }
+
+    // Delete OTP after success
+    await Otp.deleteOne({ email });
+
+    // Check if user exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser)
+      return res.status(400).json({ msg: "User already exists" });
+
+    // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({ email, password: hashedPassword });
     await newUser.save();
 
-    // Delete OTP after success
-    delete otpStore[email];
-
-    res.json({ msg: "User registered successfully" });
+    res.json({ msg: "✅ Account created successfully!" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Signup failed" });
   }
 });
 
