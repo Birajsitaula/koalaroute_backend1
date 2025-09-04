@@ -224,203 +224,203 @@
 
 // export default router;
 
-// import express from "express";
-// import axios from "axios";
-// import dotenv from "dotenv";
-// dotenv.config();
-// const router = express.Router();
-// const TOKEN = process.env.AVIASALES_API_KEY;
-// const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
-// // GET /api/aviasales/prices?origin=DEL&destination=KTM&departure_at=2025-09-11&currency=usd&limit=10
-// router.get("/prices", async (req, res) => {
-//   try {
-//     if (!TOKEN) {
-//       return res.status(500).json({
-//         error: "Server configuration error: API key is not set.",
-//       });
-//     }
-//     const {
-//       origin,
-//       destination,
-//       departure_at,
-//       currency = "usd",
-//       limit = 10,
-//     } = req.query;
-//     if (!origin || !destination || !departure_at) {
-//       return res.status(400).json({
-//         error:
-//           "Missing required query parameters: origin, destination, departure_at",
-//       });
-//     }
-//     const response = await axios.get(API_URL, {
-//       params: {
-//         origin: origin.toUpperCase(),
-//         destination: destination.toUpperCase(),
-//         departure_at,
-//         token: TOKEN,
-//         currency,
-//         limit,
-//       },
-//       headers: {
-//         "Accept-Encoding": "gzip, deflate",
-//       },
-//     });
+import express from "express";
+import axios from "axios";
+import dotenv from "dotenv";
+dotenv.config();
+const router = express.Router();
+const TOKEN = process.env.AVIASALES_API_KEY;
+const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
+// GET /api/aviasales/prices?origin=DEL&destination=KTM&departure_at=2025-09-11&currency=usd&limit=10
+router.get("/prices", async (req, res) => {
+  try {
+    if (!TOKEN) {
+      return res.status(500).json({
+        error: "Server configuration error: API key is not set.",
+      });
+    }
+    const {
+      origin,
+      destination,
+      departure_at,
+      currency = "usd",
+      limit = 10,
+    } = req.query;
+    if (!origin || !destination || !departure_at) {
+      return res.status(400).json({
+        error:
+          "Missing required query parameters: origin, destination, departure_at",
+      });
+    }
+    const response = await axios.get(API_URL, {
+      params: {
+        origin: origin.toUpperCase(),
+        destination: destination.toUpperCase(),
+        departure_at,
+        token: TOKEN,
+        currency,
+        limit,
+      },
+      headers: {
+        "Accept-Encoding": "gzip, deflate",
+      },
+    });
 
-//     if (!response.data.success) {
-//       return res.status(500).json({
-//         error: "API request failed",
-//         details: response.data.error || "Unknown error",
-//       });
-//     }
-//     // Return the flight price data
-//     res.json({ data: response.data.data });
-//   } catch (error) {
-//     console.error(
-//       "Aviasales API error:",
-//       error.response?.data || error.message
-//     );
-//     res.status(500).json({
-//       error: "Failed to fetch flight prices",
-//       details: error.response?.data || error.message,
-//     });
-//   }
-// });
-// export default router;
+    if (!response.data.success) {
+      return res.status(500).json({
+        error: "API request failed",
+        details: response.data.error || "Unknown error",
+      });
+    }
+    // Return the flight price data
+    res.json({ data: response.data.data });
+  } catch (error) {
+    console.error(
+      "Aviasales API error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      error: "Failed to fetch flight prices",
+      details: error.response?.data || error.message,
+    });
+  }
+});
+export default router;
 
 // backend/routes/aviasales.js
 import express from "express";
 import axios from "axios";
 import crypto from "crypto";
-import dotenv from "dotenv";
+// import dotenv from "dotenv";
 
-dotenv.config();
-const router = express.Router();
+// dotenv.config();
+// const router = express.Router();
 
-const MARKER = process.env.AVIASALES_MARKER; // e.g., 662691
-const TOKEN = process.env.AVIASALES_API_KEY; // your Aviasales API key
+// const MARKER = process.env.AVIASALES_MARKER; // e.g., 662691
+// const TOKEN = process.env.AVIASALES_API_KEY; // your Aviasales API key
 
-// Generate MD5 signature
-function generateSignature(marker, host, token) {
-  return crypto
-    .createHash("md5")
-    .update(marker + host + token)
-    .digest("hex");
-}
+// // Generate MD5 signature
+// function generateSignature(marker, host, token) {
+//   return crypto
+//     .createHash("md5")
+//     .update(marker + host + token)
+//     .digest("hex");
+// }
 
-// POST /api/aviasales/search
-router.post("/search", async (req, res) => {
-  try {
-    const {
-      origin,
-      destination,
-      departure_at,
-      return_at,
-      passengers = 1,
-      children = 0,
-      infants = 0,
-      trip_class = "Y",
-    } = req.body;
+// // POST /api/aviasales/search
+// router.post("/search", async (req, res) => {
+//   try {
+//     const {
+//       origin,
+//       destination,
+//       departure_at,
+//       return_at,
+//       passengers = 1,
+//       children = 0,
+//       infants = 0,
+//       trip_class = "Y",
+//     } = req.body;
 
-    if (!origin || !destination || !departure_at) {
-      return res.status(400).json({
-        error: "Origin, destination, and departure_at are required",
-      });
-    }
+//     if (!origin || !destination || !departure_at) {
+//       return res.status(400).json({
+//         error: "Origin, destination, and departure_at are required",
+//       });
+//     }
 
-    // Host must be your deployed backend URL
-    const host = req.headers.host || "koalaroute-backend1.onrender.com";
-    // user_ip should ideally be the real client IP
-    const user_ip = req.headers["x-forwarded-for"] || req.ip || "127.0.0.1";
+//     // Host must be your deployed backend URL
+//     const host = req.headers.host || "koalaroute-backend1.onrender.com";
+//     // user_ip should ideally be the real client IP
+//     const user_ip = req.headers["x-forwarded-for"] || req.ip || "127.0.0.1";
 
-    // Dynamically generate signature
-    const signature = generateSignature(MARKER, host, TOKEN);
+//     // Dynamically generate signature
+//     const signature = generateSignature(MARKER, host, TOKEN);
 
-    // Build passengers object
-    const passengersObj = { adults: passengers, children, infants };
+//     // Build passengers object
+//     const passengersObj = { adults: passengers, children, infants };
 
-    // Build segments array
-    const segments = [
-      {
-        origin: origin.toUpperCase(),
-        destination: destination.toUpperCase(),
-        date: departure_at,
-      },
-    ];
+//     // Build segments array
+//     const segments = [
+//       {
+//         origin: origin.toUpperCase(),
+//         destination: destination.toUpperCase(),
+//         date: departure_at,
+//       },
+//     ];
 
-    if (return_at) {
-      segments.push({
-        origin: destination.toUpperCase(),
-        destination: origin.toUpperCase(),
-        date: return_at,
-      });
-    }
+//     if (return_at) {
+//       segments.push({
+//         origin: destination.toUpperCase(),
+//         destination: origin.toUpperCase(),
+//         date: return_at,
+//       });
+//     }
 
-    const payload = {
-      signature,
-      marker: MARKER,
-      host,
-      user_ip,
-      locale: "en",
-      trip_class,
-      passengers: passengersObj,
-      segments,
-    };
+//     const payload = {
+//       signature,
+//       marker: MARKER,
+//       host,
+//       user_ip,
+//       locale: "en",
+//       trip_class,
+//       passengers: passengersObj,
+//       segments,
+//     };
 
-    console.log("Payload sent to Aviasales:", JSON.stringify(payload, null, 2));
+//     console.log("Payload sent to Aviasales:", JSON.stringify(payload, null, 2));
 
-    // Step 1: Initialize search
-    const searchResponse = await axios.post(
-      "https://api.travelpayouts.com/v1/flight_search",
-      payload,
-      { headers: { "Content-Type": "application/json" } }
-    );
+//     // Step 1: Initialize search
+//     const searchResponse = await axios.post(
+//       "https://api.travelpayouts.com/v1/flight_search",
+//       payload,
+//       { headers: { "Content-Type": "application/json" } }
+//     );
 
-    const searchId =
-      searchResponse.data?.search_id || searchResponse.data?.uuid;
-    if (!searchId) {
-      return res
-        .status(500)
-        .json({ error: "Failed to get search_id from Aviasales" });
-    }
+//     const searchId =
+//       searchResponse.data?.search_id || searchResponse.data?.uuid;
+//     if (!searchId) {
+//       return res
+//         .status(500)
+//         .json({ error: "Failed to get search_id from Aviasales" });
+//     }
 
-    console.log("Search initialized. search_id:", searchId);
+//     console.log("Search initialized. search_id:", searchId);
 
-    // Step 2: Poll results
-    let flights = [];
-    const maxAttempts = 10;
-    let attempts = 0;
+//     // Step 2: Poll results
+//     let flights = [];
+//     const maxAttempts = 10;
+//     let attempts = 0;
 
-    while (attempts < maxAttempts && flights.length === 0) {
-      attempts++;
-      const resultsResponse = await axios.get(
-        "https://api.travelpayouts.com/v1/flight_search_results",
-        {
-          params: { uuid: searchId },
-          headers: { "Accept-Encoding": "gzip,deflate" },
-        }
-      );
-      flights = resultsResponse.data?.proposals || [];
+//     while (attempts < maxAttempts && flights.length === 0) {
+//       attempts++;
+//       const resultsResponse = await axios.get(
+//         "https://api.travelpayouts.com/v1/flight_search_results",
+//         {
+//           params: { uuid: searchId },
+//           headers: { "Accept-Encoding": "gzip,deflate" },
+//         }
+//       );
+//       flights = resultsResponse.data?.proposals || [];
 
-      if (flights.length === 0) {
-        console.log(`Polling attempt ${attempts}, no flights yet...`);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
-    }
+//       if (flights.length === 0) {
+//         console.log(`Polling attempt ${attempts}, no flights yet...`);
+//         await new Promise((resolve) => setTimeout(resolve, 3000));
+//       }
+//     }
 
-    if (flights.length === 0) {
-      return res
-        .status(404)
-        .json({ error: "No flights found after polling. Try again later." });
-    }
+//     if (flights.length === 0) {
+//       return res
+//         .status(404)
+//         .json({ error: "No flights found after polling. Try again later." });
+//     }
 
-    res.json({ data: flights });
-  } catch (err) {
-    console.error("Aviasales API error:", err.response?.data || err.message);
-    res.status(500).json({
-      error: "Flight search failed",
-      details: err.response?.data || err.message,
-    });
-  }
-});
+//     res.json({ data: flights });
+//   } catch (err) {
+//     console.error("Aviasales API error:", err.response?.data || err.message);
+//     res.status(500).json({
+//       error: "Flight search failed",
+//       details: err.response?.data || err.message,
+//     });
+//   }
+// });
 
-export default router;
+// export default router;
