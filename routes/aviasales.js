@@ -226,7 +226,6 @@
 
 import express from "express";
 import axios from "axios";
-import crypto from "crypto";
 import dotenv from "dotenv";
 
 // Load environment variables from the .env file
@@ -234,51 +233,19 @@ dotenv.config();
 
 const router = express.Router();
 
-const API_URL = "https://api.travelpayouts.com/v1/flight_search";
-const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
+// The correct API endpoints for modern flight search
+const API_URL = "https://api.travelpayouts.com/aviasales/v3/search/flights";
+const RESULTS_URL = "https://api.travelpayouts.com/aviasales/v3/search/results";
 
-const MARKER = process.env.AVIASALES_MARKER;
-const TOKEN = process.env.AVIASALES_API_KEY;
-const LOCALE = "en";
-
-// Logging to confirm environment variables are loaded
-console.log("--- Debugging Environment Variables ---");
-console.log("MARKER:", MARKER);
-console.log("TOKEN:", TOKEN);
-console.log("-------------------------------------");
-
-/**
- * Generates the MD5 signature for the Aviasales API.
- * This is a hash of the marker, API token, host, and user IP.
- * NOTE: The signature method is often a point of failure due to subtle changes in documentation.
- * This function uses a common, documented method for Travelpayouts APIs.
- * @param {string} marker
- * @param {string} token
- * @param {string} host
- * @param {string} userIp
- * @returns {string} The MD5 signature.
- */
-function generateSignature(marker, token, host, userIp) {
-  const stringToHash = `${token}:${marker}:${host}:${userIp}`;
-  return crypto.createHash("md5").update(stringToHash).digest("hex");
-}
-
-// Helper function to get the user's IP address
-function getUserIp(req) {
-  return (
-    req.headers["x-forwarded-for"] || req.connection.remoteAddress || "0.0.0.0"
-  );
-}
+const TOKEN = process.env.AVIASALES_TOKEN;
 
 // POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
-    if (!MARKER || !TOKEN) {
-      console.error(
-        "Missing AVIASALES_MARKER or AVIASALES_TOKEN environment variables."
-      );
+    if (!TOKEN) {
+      console.error("Missing AVIASALES_TOKEN environment variable.");
       return res.status(500).json({
-        error: "Server configuration error: API keys are not set.",
+        error: "Server configuration error: API key is not set.",
       });
     }
 
@@ -297,22 +264,8 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    // Get the host and user IP for signature generation
-    const host = req.headers.host || "localhost";
-    const userIp = getUserIp(req);
-
-    // Generate the MD5 signature
-    const signature = generateSignature(MARKER, TOKEN, host, userIp);
-
+    // Prepare the payload for the initial search request
     const payload = {
-      marker: MARKER,
-      locale: LOCALE,
-      trip_class: tripClass,
-      passengers: {
-        adults: passengers.adults,
-        children: passengers.children,
-        infants: passengers.infants,
-      },
       segments: [
         {
           origin: origin.toUpperCase(),
@@ -320,7 +273,12 @@ router.post("/search", async (req, res) => {
           date: departure,
         },
       ],
-      signature, // Add the signature to the final payload
+      passengers: {
+        adults: passengers.adults,
+        children: passengers.children,
+        infants: passengers.infants,
+      },
+      trip_class: tripClass,
     };
 
     if (returnDate) {
@@ -335,12 +293,16 @@ router.post("/search", async (req, res) => {
       "Initializing Aviasales search with payload:",
       JSON.stringify(payload, null, 2)
     );
+
+    // Step 1: Start the search session
     const searchResponse = await axios.post(API_URL, payload, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Token": TOKEN, // Use the API token in a header
+      },
     });
 
-    const searchId =
-      searchResponse.data?.search_id || searchResponse.data?.uuid;
+    const searchId = searchResponse.data?.search_id;
 
     if (!searchId) {
       return res.status(500).json({
@@ -351,28 +313,35 @@ router.post("/search", async (req, res) => {
 
     console.log("Search initialized. search_id:", searchId);
 
+    // Step 2: Poll for results
     let attempts = 0;
-    const maxAttempts = 15;
+    const maxAttempts = 20; // Increased attempts for better reliability
     let flights = [];
+    let isComplete = false;
 
-    while (attempts < maxAttempts && flights.length === 0) {
+    while (attempts < maxAttempts && !isComplete) {
       attempts++;
       try {
         const resultsResponse = await axios.get(RESULTS_URL, {
-          params: { uuid: searchId },
+          headers: {
+            "X-Access-Token": TOKEN,
+          },
+          params: {
+            uuid: searchId,
+            trip_class: tripClass,
+          },
         });
 
-        const proposals = resultsResponse.data?.proposals;
-
-        if (proposals) {
-          flights = Object.values(proposals).flat();
-          if (flights.length > 0) {
-            console.log(`Flights found after ${attempts} attempts.`);
-            break;
-          }
+        if (resultsResponse.data.search_status === "complete") {
+          isComplete = true;
+          flights = resultsResponse.data.proposals;
         }
 
-        console.log(`Polling attempt ${attempts}, no flights yet. Waiting...`);
+        console.log(
+          `Polling attempt ${attempts}, status: ${resultsResponse.data.search_status}`
+        );
+
+        // Wait before polling again
         await new Promise((resolve) => setTimeout(resolve, 3000));
       } catch (pollErr) {
         console.error(`Polling attempt ${attempts} failed:`, pollErr.message);
@@ -386,6 +355,7 @@ router.post("/search", async (req, res) => {
       });
     }
 
+    // Sort flights by price
     const sortedFlights = flights.sort((a, b) => a.price - b.price);
 
     res.json({ data: sortedFlights });
