@@ -232,24 +232,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const router = express.Router();
-
-// The correct API endpoints for modern flight search
-const API_URL = "https://api.travelpayouts.com/aviasales/v3/search/flights";
-const RESULTS_URL = "https://api.travelpayouts.com/aviasales/v3/search/results";
-
-// The API key to be used for authentication
 const TOKEN = process.env.AVIASALES_API_KEY;
+const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
 
-// Logging to confirm environment variables are loaded
-console.log("--- Debugging Environment Variables ---");
-console.log("TOKEN:", TOKEN);
-console.log("-------------------------------------");
-
-router.post("/search", async (req, res) => {
+// GET /api/aviasales/prices?origin=MAD&destination=BCN&departure_at=2025-09&return_at=2025-10&limit=10
+router.get("/prices", async (req, res) => {
   try {
     // Check if the API key is set
     if (!TOKEN) {
-      console.error("Missing AVIASALES_TOKEN environment variable.");
       return res.status(500).json({
         error: "Server configuration error: API key is not set.",
       });
@@ -258,122 +248,58 @@ router.post("/search", async (req, res) => {
     const {
       origin,
       destination,
-      departure,
-      returnDate,
-      passengers,
-      tripClass,
-    } = req.body;
+      departure_at,
+      return_at,
+      currency = "usd",
+      limit = 30,
+    } = req.query;
 
     // Validate required input
-    if (!origin || !destination || !departure) {
+    if (!origin || !destination || !departure_at) {
       return res.status(400).json({
-        error: "Origin, destination, and departure date are required",
+        error:
+          "Missing required query parameters: origin, destination, departure_at",
       });
     }
 
-    // Prepare the payload for the initial search request
-    const payload = {
-      segments: [
-        {
-          origin: origin.toUpperCase(),
-          destination: destination.toUpperCase(),
-          date: departure,
-        },
-      ],
-      passengers: {
-        adults: passengers.adults,
-        children: passengers.children,
-        infants: passengers.infants,
-      },
-      trip_class: tripClass,
+    // Prepare the parameters for the API call
+    const params = {
+      origin: origin.toUpperCase(),
+      destination: destination.toUpperCase(),
+      departure_at,
+      token: TOKEN,
+      currency,
+      limit,
+      unique: false,
+      sorting: "price",
+      direct: false,
     };
 
-    if (returnDate) {
-      payload.segments.push({
-        origin: destination.toUpperCase(),
-        destination: origin.toUpperCase(),
-        date: returnDate,
-      });
+    if (return_at) {
+      params.return_at = return_at;
     }
 
-    console.log(
-      "Initializing Aviasales search with payload:",
-      JSON.stringify(payload, null, 2)
-    );
-
-    // Step 1: Start the search session by sending a POST request
-    const searchResponse = await axios.post(API_URL, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Access-Token": TOKEN, // Authentication via header
-      },
+    const response = await axios.get(API_URL, {
+      params,
     });
 
-    const searchId = searchResponse.data?.search_id;
-
-    if (!searchId) {
+    if (!response.data.success) {
       return res.status(500).json({
-        error: "Failed to get search_id from Aviasales",
-        details: searchResponse.data || "No search ID received.",
+        error: "API request failed",
+        details: response.data.error || "Unknown error",
       });
     }
 
-    console.log("Search initialized. search_id:", searchId);
-
-    // Step 2: Poll for results using the searchId
-    let attempts = 0;
-    const maxAttempts = 20;
-    let flights = [];
-    let isComplete = false;
-
-    while (attempts < maxAttempts && !isComplete) {
-      attempts++;
-      try {
-        const resultsResponse = await axios.get(RESULTS_URL, {
-          headers: {
-            "X-Access-Token": TOKEN,
-          },
-          params: {
-            uuid: searchId,
-            trip_class: tripClass,
-          },
-        });
-
-        if (resultsResponse.data.search_status === "complete") {
-          isComplete = true;
-          flights = resultsResponse.data.proposals;
-        }
-
-        console.log(
-          `Polling attempt ${attempts}, status: ${resultsResponse.data.search_status}`
-        );
-
-        // Wait 3 seconds before polling again
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      } catch (pollErr) {
-        console.error(`Polling attempt ${attempts} failed:`, pollErr.message);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
-    }
-
-    if (flights.length === 0) {
-      return res.status(404).json({
-        error: "No flights found after polling. Try again later.",
-      });
-    }
-
-    // Sort flights by price
-    const sortedFlights = flights.sort((a, b) => a.price - b.price);
-
-    res.json({ data: sortedFlights });
-  } catch (err) {
+    // The API returned multiple results, so we can send the whole array
+    res.json({ data: response.data.data });
+  } catch (error) {
     console.error(
-      "Aviasales Search API error:",
-      err.response?.data || err.message
+      "Aviasales API error:",
+      error.response?.data || error.message
     );
     res.status(500).json({
-      error: "Flight search failed",
-      details: err.response?.data || err.message,
+      error: "Failed to fetch flight prices",
+      details: error.response?.data || error.message,
     });
   }
 });
