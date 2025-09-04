@@ -238,7 +238,7 @@ const API_URL = "https://api.travelpayouts.com/v1/flight_search";
 const RESULTS_URL = "https://api.travelpayouts.com/v1/flight_search_results";
 
 const MARKER = process.env.AVIASALES_MARKER;
-const TOKEN = process.env.AVIASALES_API_KEY; // CORRECTED: Changed to match your .env file
+const TOKEN = process.env.AVIASALES_TOKEN;
 const LOCALE = "en";
 
 // Logging to confirm environment variables are loaded
@@ -246,6 +246,22 @@ console.log("--- Debugging Environment Variables ---");
 console.log("MARKER:", MARKER);
 console.log("TOKEN:", TOKEN);
 console.log("-------------------------------------");
+
+/**
+ * Generates the MD5 signature for the Aviasales API as per documentation.
+ * This is a hash of the marker, your API token, and the payload's JSON string.
+ * @param {object} payload - The request body object.
+ * @param {string} token - Your personal access token.
+ * @returns {string} The MD5 signature.
+ */
+function generateSignature(payload, token) {
+  // Aviasales documentation is sometimes unclear. A common method is hashing the payload JSON string + the token.
+  // The support message suggests hashing "all your request parameters and your API token".
+  // Let's use the most common method for their signature-based APIs: hashing the entire payload as a string plus the token.
+  const payloadString = JSON.stringify(payload);
+  const stringToHash = `${payloadString}${token}`;
+  return crypto.createHash("md5").update(stringToHash).digest("hex");
+}
 
 // POST /api/aviasales/search
 router.post("/search", async (req, res) => {
@@ -266,7 +282,6 @@ router.post("/search", async (req, res) => {
       returnDate,
       passengers,
       tripClass,
-      currency = "usd",
     } = req.body;
 
     if (!origin || !destination || !departure) {
@@ -277,7 +292,6 @@ router.post("/search", async (req, res) => {
 
     const payload = {
       marker: MARKER,
-      token: TOKEN,
       locale: LOCALE,
       trip_class: tripClass,
       passengers: {
@@ -292,7 +306,6 @@ router.post("/search", async (req, res) => {
           date: departure,
         },
       ],
-      currency: currency.toUpperCase(),
     };
 
     if (returnDate) {
@@ -302,6 +315,12 @@ router.post("/search", async (req, res) => {
         date: returnDate,
       });
     }
+
+    // Generate the signature
+    const signature = generateSignature(payload, TOKEN);
+    
+    // Add the signature to the final payload
+    payload.signature = signature;
 
     console.log(
       "Initializing Aviasales search with payload:",
