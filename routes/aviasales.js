@@ -295,11 +295,11 @@ dotenv.config();
 
 const router = express.Router();
 
-const MARKER = process.env.AVIASALES_MARKER;
-const TOKEN = process.env.AVIASALES_API_KEY;
-const LOCALE = "en";
+// Load environment variables
+const MARKER = process.env.AVIASALES_MARKER; // e.g., "662691"
+const TOKEN = process.env.AVIASALES_API_KEY; // Your Aviasales secret token
 
-// Helper: generate MD5 signature
+// Helper function to generate the MD5 signature
 function generateSignature(marker, host, token) {
   return crypto
     .createHash("md5")
@@ -310,59 +310,56 @@ function generateSignature(marker, host, token) {
 // POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
-    const {
-      origin,
-      destination,
-      departure,
-      returnDate,
-      adults = 1,
-      children = 0,
-      infants = 0,
-      tripClass = "Y",
-    } = req.body;
+    const { origin, destination, departure_at, return_at } = req.body;
 
-    if (!origin || !destination || !departure) {
+    // Validate input
+    if (!origin || !destination || !departure_at) {
       return res.status(400).json({
-        error: "Origin, destination, and departure date are required",
+        error: "Origin, destination, and departure_at are required",
       });
     }
 
+    // Host for signature (your deployed backend host)
     const host = req.headers.host || "localhost:5000";
-    const user_ip = req.ip || "127.0.0.1";
 
+    // Get user's public IP for Aviasales
+    const user_ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
+
+    // Generate signature dynamically
     const signature = generateSignature(MARKER, host, TOKEN);
 
-    // Build segments array for round-trip
+    // Build segments array
     const segments = [
       {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        date: departure,
+        date: departure_at,
       },
     ];
-    if (returnDate) {
+
+    if (return_at) {
       segments.push({
         origin: destination.toUpperCase(),
         destination: origin.toUpperCase(),
-        date: returnDate,
+        date: return_at,
       });
     }
 
-    // Build payload
     const payload = {
       signature,
       marker: MARKER,
       host,
       user_ip,
-      locale: LOCALE,
-      trip_class: tripClass,
-      passengers: { adults, children, infants },
+      locale: "en",
+      trip_class: "Y",
+      passengers: { adults: 1, children: 0, infants: 0 },
       segments,
     };
 
-    console.log("Payload sent to Aviasales:", JSON.stringify(payload, null, 2));
+    console.log("Payload sent to Aviasales:", payload);
 
-    // Step 1: Initialize flight search
+    // Step 1: Start search
     const searchResponse = await axios.post(
       "https://api.travelpayouts.com/v1/flight_search",
       payload,
@@ -372,17 +369,18 @@ router.post("/search", async (req, res) => {
     const searchId =
       searchResponse.data?.search_id || searchResponse.data?.uuid;
     if (!searchId) {
-      return res
-        .status(500)
-        .json({ error: "Failed to get search_id from Aviasales" });
+      return res.status(500).json({
+        error: "Failed to get search_id from Aviasales",
+        details: searchResponse.data,
+      });
     }
 
     console.log("Search initialized. search_id:", searchId);
 
-    // Step 2: Poll results
-    let flights = [];
+    // Step 2: Poll results (up to 10 times, 3s interval)
     let attempts = 0;
     const maxAttempts = 10;
+    let flights = [];
 
     while (attempts < maxAttempts && flights.length === 0) {
       attempts++;
@@ -395,8 +393,8 @@ router.post("/search", async (req, res) => {
       flights = resultsResponse.data?.proposals || [];
 
       if (flights.length === 0) {
-        console.log(`Polling attempt ${attempts}: no flights yet...`);
-        await new Promise((resolve) => setTimeout(resolve, 3000)); // wait 3 seconds
+        console.log(`Polling attempt ${attempts}, no flights yet...`);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
 
@@ -408,7 +406,10 @@ router.post("/search", async (req, res) => {
 
     res.json({ data: flights });
   } catch (err) {
-    console.error("Aviasales API error:", err.response?.data || err.message);
+    console.error(
+      "Aviasales Search API error:",
+      err.response?.data || err.message
+    );
     res.status(500).json({
       error: "Flight search failed",
       details: err.response?.data || err.message,
