@@ -237,13 +237,13 @@ const router = express.Router();
 const API_URL = "https://api.travelpayouts.com/aviasales/v3/search/flights";
 const RESULTS_URL = "https://api.travelpayouts.com/aviasales/v3/search/results";
 
-const TOKEN = process.env.AVIASALES_TOKEN;
+const TOKEN = process.env.AVIASALES_API_KEY;
 
 // POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
     if (!TOKEN) {
-      console.error("Missing AVIASALES_TOKEN environment variable.");
+      console.error("Missing AVIASALES_API_KEY environment variable.");
       return res.status(500).json({
         error: "Server configuration error: API key is not set.",
       });
