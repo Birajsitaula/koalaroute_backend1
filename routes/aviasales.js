@@ -228,9 +228,11 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 dotenv.config();
+
 const router = express.Router();
 const TOKEN = process.env.AVIASALES_API_KEY;
-const API_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
+const API_URL = "http://api.travelpayouts.com/aviasales/v3/prices_for_dates";
+
 // GET /api/aviasales/prices?origin=DEL&destination=KTM&departure_at=2025-09-11&currency=usd&limit=10
 router.get("/prices", async (req, res) => {
   try {
@@ -239,6 +241,7 @@ router.get("/prices", async (req, res) => {
         error: "Server configuration error: API key is not set.",
       });
     }
+
     const {
       origin,
       destination,
@@ -246,12 +249,14 @@ router.get("/prices", async (req, res) => {
       currency = "usd",
       limit = 10,
     } = req.query;
+
     if (!origin || !destination || !departure_at) {
       return res.status(400).json({
         error:
           "Missing required query parameters: origin, destination, departure_at",
       });
     }
+
     const response = await axios.get(API_URL, {
       params: {
         origin: origin.toUpperCase(),
@@ -261,9 +266,7 @@ router.get("/prices", async (req, res) => {
         currency,
         limit,
       },
-      headers: {
-        "Accept-Encoding": "gzip, deflate",
-      },
+      // Removed the 'Accept-Encoding' header
     });
 
     if (!response.data.success) {
@@ -272,7 +275,7 @@ router.get("/prices", async (req, res) => {
         details: response.data.error || "Unknown error",
       });
     }
-    // Return the flight price data
+
     res.json({ data: response.data.data });
   } catch (error) {
     console.error(
@@ -285,4 +288,5 @@ router.get("/prices", async (req, res) => {
     });
   }
 });
+
 export default router;
