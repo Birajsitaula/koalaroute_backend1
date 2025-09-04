@@ -294,9 +294,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const router = express.Router();
+
 const MARKER = process.env.AVIASALES_MARKER;
 const TOKEN = process.env.AVIASALES_API_KEY;
+const LOCALE = "en";
 
+// Helper: generate MD5 signature
 function generateSignature(marker, host, token) {
   return crypto
     .createHash("md5")
@@ -304,55 +307,111 @@ function generateSignature(marker, host, token) {
     .digest("hex");
 }
 
+// POST /api/aviasales/search
 router.post("/search", async (req, res) => {
   try {
-    const { origin, destination, departure_at } = req.body;
+    const {
+      origin,
+      destination,
+      departure,
+      returnDate,
+      adults = 1,
+      children = 0,
+      infants = 0,
+      tripClass = "Y",
+    } = req.body;
 
-    if (!origin || !destination || !departure_at) {
+    if (!origin || !destination || !departure) {
       return res.status(400).json({
-        error: "Origin, destination, and departure_at are required",
+        error: "Origin, destination, and departure date are required",
       });
     }
 
-    const host = req.headers.host || "koalaroute-backend1.onrender.com";
+    const host = req.headers.host || "localhost:5000";
     const user_ip = req.ip || "127.0.0.1";
 
     const signature = generateSignature(MARKER, host, TOKEN);
 
+    // Build segments array for round-trip
+    const segments = [
+      {
+        origin: origin.toUpperCase(),
+        destination: destination.toUpperCase(),
+        date: departure,
+      },
+    ];
+    if (returnDate) {
+      segments.push({
+        origin: destination.toUpperCase(),
+        destination: origin.toUpperCase(),
+        date: returnDate,
+      });
+    }
+
+    // Build payload
     const payload = {
       signature,
       marker: MARKER,
       host,
       user_ip,
-      locale: "en",
-      trip_class: "Y",
-      passengers: { adults: 1, children: 0, infants: 0 },
-      segments: [
-        {
-          origin: origin.toUpperCase(),
-          destination: destination.toUpperCase(),
-          date: departure_at,
-        },
-      ],
+      locale: LOCALE,
+      trip_class: tripClass,
+      passengers: { adults, children, infants },
+      segments,
     };
 
-    console.log("Payload sent to Aviasales:", payload);
+    console.log("Payload sent to Aviasales:", JSON.stringify(payload, null, 2));
 
-    const response = await axios.post(
+    // Step 1: Initialize flight search
+    const searchResponse = await axios.post(
       "https://api.travelpayouts.com/v1/flight_search",
       payload,
       { headers: { "Content-Type": "application/json" } }
     );
 
-    res.json(response.data);
-  } catch (error) {
-    console.error(
-      "Aviasales API error:",
-      error.response?.data || error.message
-    );
+    const searchId =
+      searchResponse.data?.search_id || searchResponse.data?.uuid;
+    if (!searchId) {
+      return res
+        .status(500)
+        .json({ error: "Failed to get search_id from Aviasales" });
+    }
+
+    console.log("Search initialized. search_id:", searchId);
+
+    // Step 2: Poll results
+    let flights = [];
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts && flights.length === 0) {
+      attempts++;
+
+      const resultsResponse = await axios.get(
+        "https://api.travelpayouts.com/v1/flight_search_results",
+        { params: { uuid: searchId } }
+      );
+
+      flights = resultsResponse.data?.proposals || [];
+
+      if (flights.length === 0) {
+        console.log(`Polling attempt ${attempts}: no flights yet...`);
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // wait 3 seconds
+      }
+    }
+
+    if (flights.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "No flights found after polling. Try again later." });
+    }
+
+    res.json({ data: flights });
+  } catch (err) {
+    console.error("Aviasales API error:", err.response?.data || err.message);
     res.status(500).json({
-      error: "Failed to start flight search",
-      details: error.response?.data || error.message,
+      error: "Flight search failed",
+      details: err.response?.data || err.message,
     });
   }
 });
