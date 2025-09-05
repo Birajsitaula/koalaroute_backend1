@@ -179,47 +179,58 @@ router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
 
+    // Validate email format
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
-      // Still return 200 to prevent email enumeration attacks
+      // For security, don't reveal if email exists or not
+      console.log(`Password reset requested for non-existent email: ${email}`);
       return res.json({
         message: "If the email exists, a reset link has been sent.",
       });
     }
 
     // Generate reset token (JWT, expires in 15 minutes)
-    const resetToken = jwt.sign({ id: user._id }, JWT_SECRET, {
+    const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "15m",
     });
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
     // Send reset email
-    await transporter.sendMail({
-      from: process.env.ADMIN_EMAIL,
-      to: email,
-      subject: "Reset Your Password - KoalaRoute AI",
-      text: `Click the link to reset your password: ${resetLink} \nThis link expires in 15 minutes.`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #4a6fa5;">Password Reset Request</h2>
-          <p>You requested to reset your password for your KoalaRoute AI account.</p>
-          <p>Click the button below to reset your password:</p>
-          <a href="${resetLink}" style="display: inline-block; padding: 12px 24px; background-color: #4a6fa5; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
-            Reset Password
-          </a>
-          <p>This link will expire in 15 minutes for security reasons.</p>
-          <p>If you didn't request this reset, please ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-          <p style="color: #666; font-size: 12px;">This is an automated message from KoalaRoute AI.</p>
-        </div>
-      `,
-    });
+    try {
+      await transporter.sendMail({
+        from: process.env.ADMIN_EMAIL,
+        to: email,
+        subject: "Reset Your Password - KoalaRoute AI",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4a6fa5;">Password Reset Request</h2>
+            <p>You requested to reset your password for your KoalaRoute AI account.</p>
+            <p>Click the button below to reset your password:</p>
+            <a href="${resetLink}" style="display: inline-block; padding: 12px 24px; background-color: #4a6fa5; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
+              Reset Password
+            </a>
+            <p>This link will expire in 15 minutes for security reasons.</p>
+            <p>If you didn't request this reset, please ignore this email.</p>
+            <p style="color: #666; font-size: 12px;">This is an automated message from KoalaRoute AI.</p>
+          </div>
+        `,
+        text: `Click the link to reset your password: ${resetLink} \nThis link expires in 15 minutes.`,
+      });
 
-    res.json({ message: "Password reset link sent to your email ✅" });
+      console.log(`Password reset email sent to: ${email}`);
+      res.json({ message: "Password reset link sent to your email" });
+    } catch (emailError) {
+      console.error("Email sending error:", emailError);
+      res.status(500).json({ error: "Failed to send reset email" });
+    }
   } catch (err) {
     console.error("Password reset error:", err);
-    res.status(500).json({ error: "Failed to send reset link" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 // ================== RESET PASSWORD ==================
