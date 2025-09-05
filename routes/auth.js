@@ -237,21 +237,13 @@ router.post("/forgot-password", async (req, res) => {
 // Reset password endpoint
 router.post("/reset-password", async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { token, newPassword, confirmPassword } = req.body;
 
-    if (!token || !newPassword) {
-      return res
-        .status(400)
-        .json({ msg: "Token and new password are required" });
-    }
-
-    // Verify token
-    let payload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      return res.status(400).json({ msg: "Invalid or expired token" });
-    }
+    if (!token) return res.status(400).json({ msg: "Token is required" });
+    if (!newPassword || !confirmPassword)
+      return res.status(400).json({ msg: "Both password fields are required" });
+    if (newPassword !== confirmPassword)
+      return res.status(400).json({ msg: "Passwords do not match" });
 
     // Validate password strength
     const passwordRegex =
@@ -262,7 +254,14 @@ router.post("/reset-password", async (req, res) => {
       });
     }
 
-    // Find user by ID from token payload
+    // Verify token
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({ msg: "Invalid or expired token" });
+    }
+
     const user = await User.findById(payload.id);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
@@ -271,7 +270,7 @@ router.post("/reset-password", async (req, res) => {
     user.password = hashedPassword;
     await user.save();
 
-    res.json({ msg: "✅ Password reset successfully!" });
+    res.json({ msg: "Password reset successfully ✅" });
   } catch (err) {
     console.error("Reset password error:", err);
     res.status(500).json({ error: "Failed to reset password" });
