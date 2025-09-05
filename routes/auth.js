@@ -234,7 +234,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 // ================== RESET PASSWORD ==================
-// Reset password endpoint
+
 router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword, confirmPassword } = req.body;
