@@ -2,23 +2,41 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import rateLimit from "express-rate-limit";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js"; // New model
 import "dotenv/config";
 
 const router = express.Router();
 
-// Configure nodemailer (use Gmail App Password or better: SendGrid/Mailgun)
+// ================== RATE LIMIT (prevent OTP spam) ==================
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // max 5 OTP requests per IP
+  message: {
+    msg: "Too many OTP requests from this IP. Please try again later.",
+  },
+});
+
+// ================== NODEMAILER CONFIG ==================
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.ADMIN_EMAIL, // admin Gmail
+    user: process.env.ADMIN_EMAIL,
     pass: process.env.ADMIN_PASSWORD, // Gmail App Password
   },
 });
 
+// ================== PASSWORD VALIDATION ==================
+function validatePassword(password) {
+  // At least 8 chars, one uppercase, one lowercase, one digit, one special char
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  return passwordRegex.test(password);
+}
+
 // ================== SEND OTP ==================
-router.post("/send-otp", async (req, res) => {
+router.post("/send-otp", otpLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -30,7 +48,7 @@ router.post("/send-otp", async (req, res) => {
         .json({ msg: "User already exists. Please login." });
     }
 
-    // ✅ Limit OTP request frequency (1/minute)
+    // ✅ Limit OTP request frequency (1/minute per email)
     const recentOtp = await Otp.findOne({ email });
     if (recentOtp && Date.now() - recentOtp.createdAt < 60 * 1000) {
       return res
@@ -73,7 +91,14 @@ router.post("/signup", async (req, res) => {
   try {
     const { email, password, otp } = req.body;
 
-    // ✅ Check if OTP exists
+    // ✅ Password strength validation
+    if (!validatePassword(password)) {
+      return res.status(400).json({
+        msg: "Password must be at least 8 characters, include uppercase, lowercase, number, and special character.",
+      });
+    }
+
+    // ✅ Check OTP
     const otpRecord = await Otp.findOne({ email });
     if (!otpRecord) {
       return res
@@ -89,7 +114,7 @@ router.post("/signup", async (req, res) => {
         .json({ msg: "OTP expired. Please request again." });
     }
 
-    // ✅ Check failed attempts
+    // ✅ Check OTP attempts
     if (otpRecord.attempts >= 3) {
       await Otp.deleteOne({ email });
       return res
