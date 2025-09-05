@@ -174,4 +174,68 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// ================== FORGOT PASSWORD ==================
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: "User not found." });
+
+    // Generate reset token (JWT, expires in 15 minutes)
+    const resetToken = jwt.sign({ id: user._id }, JWT_SECRET, {
+      expiresIn: "15m",
+    });
+
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+    // Send reset email
+    await transporter.sendMail({
+      from: process.env.ADMIN_EMAIL,
+      to: email,
+      subject: "Reset Your Password",
+      text: `Click the link to reset your password: ${resetLink} \nThis link expires in 15 minutes.`,
+    });
+
+    res.json({ msg: "Password reset link sent to your email ✅" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to send reset link" });
+  }
+});
+
+// ================== RESET PASSWORD ==================
+// Reset password endpoint
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    // Verify the token
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Find user by ID from token
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(400).json({ msg: "User not found." });
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Update user password
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ msg: "Password reset successfully" });
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({ msg: "Reset token has expired" });
+    }
+    if (err.name === "JsonWebTokenError") {
+      return res.status(401).json({ msg: "Invalid reset token" });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+});
+
 export default router;
