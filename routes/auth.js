@@ -180,7 +180,12 @@ router.post("/forgot-password", async (req, res) => {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "User not found." });
+    if (!user) {
+      // Still return 200 to prevent email enumeration attacks
+      return res.json({
+        message: "If the email exists, a reset link has been sent.",
+      });
+    }
 
     // Generate reset token (JWT, expires in 15 minutes)
     const resetToken = jwt.sign({ id: user._id }, JWT_SECRET, {
@@ -193,17 +198,30 @@ router.post("/forgot-password", async (req, res) => {
     await transporter.sendMail({
       from: process.env.ADMIN_EMAIL,
       to: email,
-      subject: "Reset Your Password",
+      subject: "Reset Your Password - KoalaRoute AI",
       text: `Click the link to reset your password: ${resetLink} \nThis link expires in 15 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #4a6fa5;">Password Reset Request</h2>
+          <p>You requested to reset your password for your KoalaRoute AI account.</p>
+          <p>Click the button below to reset your password:</p>
+          <a href="${resetLink}" style="display: inline-block; padding: 12px 24px; background-color: #4a6fa5; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
+            Reset Password
+          </a>
+          <p>This link will expire in 15 minutes for security reasons.</p>
+          <p>If you didn't request this reset, please ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+          <p style="color: #666; font-size: 12px;">This is an automated message from KoalaRoute AI.</p>
+        </div>
+      `,
     });
 
-    res.json({ msg: "Password reset link sent to your email ✅" });
+    res.json({ message: "Password reset link sent to your email ✅" });
   } catch (err) {
-    console.error(err);
+    console.error("Password reset error:", err);
     res.status(500).json({ error: "Failed to send reset link" });
   }
 });
-
 // ================== RESET PASSWORD ==================
 // Reset password endpoint
 router.post("/reset-password", async (req, res) => {
