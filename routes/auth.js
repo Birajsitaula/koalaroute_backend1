@@ -237,34 +237,44 @@ router.post("/forgot-password", async (req, res) => {
 // Reset password endpoint
 router.post("/reset-password", async (req, res) => {
   try {
-    const { token, password } = req.body;
+    const { token, newPassword } = req.body;
 
-    // Verify the token
-    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!token || !newPassword) {
+      return res
+        .status(400)
+        .json({ msg: "Token and new password are required" });
+    }
 
-    // Find user by ID from token
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(400).json({ msg: "User not found." });
+    // Verify token
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({ msg: "Invalid or expired token" });
+    }
+
+    // Validate password strength
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        msg: "Password must be at least 8 characters, include uppercase, lowercase, number, and special character.",
+      });
+    }
+
+    // Find user by ID from token payload
+    const user = await User.findById(payload.id);
+    if (!user) return res.status(404).json({ msg: "User not found" });
 
     // Hash new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Update user password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
     await user.save();
 
-    res.json({ msg: "Password reset successfully" });
+    res.json({ msg: "✅ Password reset successfully!" });
   } catch (err) {
-    if (err.name === "TokenExpiredError") {
-      return res.status(401).json({ msg: "Reset token has expired" });
-    }
-    if (err.name === "JsonWebTokenError") {
-      return res.status(401).json({ msg: "Invalid reset token" });
-    }
-    console.error(err);
+    console.error("Reset password error:", err);
     res.status(500).json({ error: "Failed to reset password" });
   }
 });
-
 export default router;
