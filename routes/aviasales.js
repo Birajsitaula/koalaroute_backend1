@@ -92,15 +92,11 @@ const router = express.Router();
 // Config
 const TOKEN = process.env.AVIASALES_API_KEY;
 const MARKER = process.env.AVIASALES_MARKER;
-const HOST = process.env.AVIASALES_HOST; // must match your live domain in Travelpayouts
-const V3_PRICES_API =
-  "https://api.travelpayouts.com/aviasales/v3/prices_for_dates";
+const HOST = process.env.AVIASALES_HOST;
 const V1_SEARCH_API = "https://api.travelpayouts.com/v1/flight_search";
 const V1_RESULTS_API = "https://api.travelpayouts.com/v1/flight_search_results";
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+/* ----------------------- Helpers ----------------------- */
 
 function md5(str) {
   return crypto.createHash("md5").update(str).digest("hex");
@@ -109,23 +105,23 @@ function md5(str) {
 function generateSignature(params, token) {
   const values = [];
 
-  const process = (obj) => {
+  const processObj = (obj) => {
     if (obj === null || obj === undefined) return;
     if (typeof obj !== "object") {
       values.push(String(obj));
       return;
     }
     if (Array.isArray(obj)) {
-      for (const item of obj) process(item);
+      obj.forEach(processObj);
       return;
     }
-    const keys = Object.keys(obj).sort();
-    for (const k of keys) process(obj[k]);
+    Object.keys(obj)
+      .sort()
+      .forEach((k) => processObj(obj[k]));
   };
 
-  process(params);
-  const joined = values.join(":");
-  return md5(`${token}:${joined}`);
+  processObj(params);
+  return md5(`${token}:${values.join(":")}`);
 }
 
 function appendMarkerToUrl(url, marker) {
@@ -146,71 +142,13 @@ function appendMarkerToUrl(url, marker) {
 function normalizePrice(raw) {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === "number") {
-    if (raw > 1000) return (raw / 100).toFixed(2); // assume cents
+    if (raw > 1000) return (raw / 100).toFixed(2);
     return raw.toFixed(2);
   }
   return String(raw);
 }
 
-/* -------------------------------------------------------------------------- */
-/* prices_for_dates (fallback/calendar)                                       */
-/* -------------------------------------------------------------------------- */
-
-router.get("/prices", async (req, res) => {
-  try {
-    if (!TOKEN) {
-      return res.status(500).json({ error: "API key missing" });
-    }
-
-    const {
-      origin,
-      destination,
-      departure_at,
-      return_at,
-      currency = "usd",
-      limit = 30,
-    } = req.query;
-    if (!origin || !destination || !departure_at) {
-      return res
-        .status(400)
-        .json({
-          error: "Missing required params: origin, destination, departure_at",
-        });
-    }
-
-    const params = {
-      origin: origin.toUpperCase(),
-      destination: destination.toUpperCase(),
-      departure_at,
-      token: TOKEN,
-      currency,
-      limit,
-      unique: false,
-      sorting: "price",
-      direct: false,
-    };
-    if (return_at) params.return_at = return_at;
-
-    const response = await axios.get(V3_PRICES_API, { params });
-
-    return res.json({ data: response.data.data || [] });
-  } catch (err) {
-    console.error(
-      "Aviasales /prices error:",
-      err.response?.data || err.message
-    );
-    return res
-      .status(500)
-      .json({
-        error: "Failed to fetch flight prices",
-        details: err.response?.data || err.message,
-      });
-  }
-});
-
-/* -------------------------------------------------------------------------- */
-/* Initiate search (v1)                                                       */
-/* -------------------------------------------------------------------------- */
+/* ----------------------- POST /search ----------------------- */
 
 router.post("/search", async (req, res) => {
   try {
@@ -220,43 +158,47 @@ router.post("/search", async (req, res) => {
         .json({ error: "Server config error: missing API key or marker" });
     }
 
+    // Use same keys as Postman JSON
     const {
       origin,
       destination,
-      departure,
-      returnDate,
+      departure_at,
+      return_at,
       passengers = 1,
       children = 0,
       infants = 0,
-      tripClass = "Y",
+      trip_class = "Y",
       currency = "USD",
     } = req.body;
 
-    if (!origin || !destination || !departure) {
+    console.log("REQ BODY:", req.body);
+
+    if (!origin || !destination || !departure_at) {
       return res
         .status(400)
-        .json({ error: "Origin, destination and departure are required." });
+        .json({ error: "Origin, destination and departure_at are required." });
     }
 
+    // Build segments
     const segments = [
       {
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
-        date: departure,
+        date: departure_at,
       },
     ];
-    if (returnDate) {
+    if (return_at) {
       segments.push({
         origin: destination.toUpperCase(),
         destination: origin.toUpperCase(),
-        date: returnDate,
+        date: return_at,
       });
     }
 
     const passengersObj = {
-      adults: parseInt(passengers) || 1,
-      children: parseInt(children) || 0,
-      infants: parseInt(infants) || 0,
+      adults: parseInt(passengers),
+      children: parseInt(children),
+      infants: parseInt(infants),
     };
 
     const hostToUse = HOST || req.headers.host || "localhost";
@@ -266,14 +208,13 @@ router.post("/search", async (req, res) => {
       host: hostToUse,
       user_ip: req.ip || req.socket?.remoteAddress || "127.0.0.1",
       locale: "en",
-      trip_class: tripClass.toUpperCase(),
+      trip_class: trip_class.toUpperCase(),
       passengers: passengersObj,
       segments,
     };
 
     const signature = generateSignature(signatureParams, TOKEN);
 
-    // Travelpayouts expects x-www-form-urlencoded
     const payload = new URLSearchParams({ ...signatureParams, signature });
 
     const searchResponse = await axios.post(V1_SEARCH_API, payload.toString(), {
@@ -307,9 +248,7 @@ router.post("/search", async (req, res) => {
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/* Get results (v1)                                                           */
-/* -------------------------------------------------------------------------- */
+/* ----------------------- GET /results/:searchId ----------------------- */
 
 router.get("/results/:searchId", async (req, res) => {
   try {
@@ -329,9 +268,8 @@ router.get("/results/:searchId", async (req, res) => {
     else if (Array.isArray(resultsData.proposals))
       proposals = resultsData.proposals;
 
-    if (!proposals.length) {
+    if (!proposals.length)
       return res.json({ status: "pending", raw: resultsData });
-    }
 
     const processed = proposals.map((p) => {
       const rawPrice = p.unified_price ?? p.price ?? p.value ?? null;
