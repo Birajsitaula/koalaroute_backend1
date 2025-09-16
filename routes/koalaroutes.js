@@ -11,108 +11,62 @@
 // const TOKEN = process.env.AVIASALES_API_KEY;
 // const MARKER = process.env.AVIASALES_MARKER;
 
-// // Helper function to generate signature
+// // Correct signature generation function
 // function generateSignature(params, token) {
-//   try {
-//     // Create a sorted array of all parameter values
-//     const flattenObject = (obj) => {
-//       const values = [];
+//   const flattenValues = [];
 
-//       const processValue = (value) => {
-//         if (typeof value === "object" && value !== null) {
-//           if (Array.isArray(value)) {
-//             value.forEach((item) => processValue(item));
-//           } else {
-//             Object.values(value).forEach((val) => processValue(val));
-//           }
-//         } else {
-//           values.push(value.toString());
-//         }
-//       };
+//   // Order matters: marker, host, user_ip, locale, trip_class, passengers, segments
+//   flattenValues.push(params.marker);
+//   flattenValues.push(params.host);
+//   flattenValues.push(params.user_ip);
+//   flattenValues.push(params.locale);
+//   flattenValues.push(params.trip_class);
 
-//       Object.values(params).forEach((value) => processValue(value));
-//       return values.sort();
-//     };
+//   flattenValues.push(params.passengers.adults);
+//   flattenValues.push(params.passengers.children);
+//   flattenValues.push(params.passengers.infants);
 
-//     const values = flattenObject(params);
-//     const valuesString = values.join(":");
-//     return crypto
-//       .createHash("md5")
-//       .update(`${token}:${valuesString}`)
-//       .digest("hex");
-//   } catch (err) {
-//     console.error("Signature generation error:", err);
-//     throw new Error("Failed to generate API signature");
-//   }
+//   params.segments.forEach((seg) => {
+//     flattenValues.push(seg.origin);
+//     flattenValues.push(seg.destination);
+//     flattenValues.push(seg.date);
+//   });
+
+//   const stringToHash = `${token}:${flattenValues.join(":")}`;
+//   return crypto.createHash("md5").update(stringToHash).digest("hex");
 // }
 
-// // Helper function to safely parse JSON responses
+// // Helper to safely parse API JSON
 // async function safeJsonParse(response) {
 //   const text = await response.text();
-
-//   // Check if response is unauthorized
-//   if (text === "Unauthorized" || text.includes("Unauthorized")) {
-//     throw new Error(
-//       "API authentication failed: Unauthorized. Please check your API credentials."
-//     );
+//   if (text.includes("Unauthorized")) {
+//     throw new Error("API authentication failed: Unauthorized");
 //   }
-
 //   try {
 //     return JSON.parse(text);
-//   } catch (e) {
-//     console.error("Failed to parse JSON response. Raw response:", text);
-//     throw new Error(
-//       `API returned invalid response: ${text.substring(0, 100)}...`
-//     );
+//   } catch {
+//     throw new Error(`Invalid API response: ${text.substring(0, 100)}...`);
 //   }
 // }
 
-// // Dashboard routes
+// // Root endpoint
 // router.get("/", (req, res) => {
-//   try {
-//     res.json({ msg: "Welcome !" });
-//   } catch (err) {
-//     console.error("Dashboard Error:", err);
-//     res.status(500).json({ error: "Failed to fetch dashboard data" });
-//   }
+//   res.json({ msg: "Welcome to KoalaRoute API!" });
 // });
 
+// // Dashboard endpoint (protected)
 // router.get("/dashboard", authMiddleware, (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     res.json({ msg: "Welcome back!", userId });
-//   } catch (err) {
-//     console.error("Dashboard Error:", err);
-//     res.status(500).json({ error: "Failed to fetch dashboard data" });
-//   }
+//   res.json({ msg: "Welcome back!", userId: req.user.id });
 // });
 
 // // Flight search endpoint
 // router.post("/flights", authMiddleware, async (req, res) => {
 //   try {
-//     // Check if API credentials are configured
-//     if (!TOKEN) {
-//       console.error("AVIASALES_API_KEY is missing from environment variables");
+//     if (!TOKEN || !MARKER) {
 //       return res.status(500).json({
-//         error:
-//           "Server configuration error: AVIASALES_API_KEY is missing from environment variables",
+//         error: "Server configuration error: API key or marker missing",
 //       });
 //     }
-
-//     if (!MARKER) {
-//       console.error("AVIASALES_MARKER is missing from environment variables");
-//       return res.status(500).json({
-//         error:
-//           "Server configuration error: AVIASALES_MARKER is missing from environment variables",
-//       });
-//     }
-
-//     console.log("API credentials found:", {
-//       tokenPresent: !!TOKEN,
-//       markerPresent: !!MARKER,
-//       tokenPrefix: TOKEN ? TOKEN.substring(0, 10) + "..." : "undefined",
-//       marker: MARKER,
-//     });
 
 //     const {
 //       origin,
@@ -130,12 +84,6 @@
 //       });
 //     }
 
-//     // Validate dates
-//     const depDate = new Date(departure_at);
-//     if (isNaN(depDate.getTime())) {
-//       return res.status(400).json({ error: "Invalid departure date" });
-//     }
-
 //     // Prepare segments
 //     const segments = [
 //       {
@@ -144,13 +92,7 @@
 //         date: departure_at,
 //       },
 //     ];
-
-//     // Add return segment if provided
 //     if (return_at) {
-//       const retDate = new Date(return_at);
-//       if (isNaN(retDate.getTime())) {
-//         return res.status(400).json({ error: "Invalid return date" });
-//       }
 //       segments.push({
 //         origin: destination.toUpperCase(),
 //         destination: origin.toUpperCase(),
@@ -158,194 +100,105 @@
 //       });
 //     }
 
-//     // Prepare request parameters
 //     const requestParams = {
 //       marker: MARKER,
 //       host: req.headers.host || "localhost",
-//       user_ip: req.ip || req.connection.remoteAddress || "127.0.0.1",
+//       user_ip: req.ip || req.socket.remoteAddress || "127.0.0.1",
 //       locale: "en",
 //       trip_class: trip_class.toUpperCase(),
-//       passengers: {
-//         adults: parseInt(passengers),
-//         children: 0,
-//         infants: 0,
-//       },
+//       passengers: { adults: parseInt(passengers), children: 0, infants: 0 },
 //       segments: segments,
 //     };
 
-//     // Generate signature
 //     requestParams.signature = generateSignature(requestParams, TOKEN);
 
-//     console.log("Making API request with params:", {
-//       ...requestParams,
-//       signature: "***", // Don't log the actual signature
-//     });
-
-//     // Initialize search
 //     const searchResponse = await fetch(SEARCH_API, {
 //       method: "POST",
-//       headers: {
-//         "Content-Type": "application/json",
-//         "X-Access-Token": TOKEN,
-//       },
+//       headers: { "Content-Type": "application/json", "X-Access-Token": TOKEN },
 //       body: JSON.stringify(requestParams),
 //     });
 
-//     // Log response details for debugging
-//     console.log("API response status:", searchResponse.status);
-//     console.log(
-//       "API response headers:",
-//       Object.fromEntries(searchResponse.headers.entries())
-//     );
-
-//     // Check response status before parsing
 //     if (searchResponse.status === 401) {
-//       return res.status(401).json({
-//         error: "API authentication failed. Please check your API credentials.",
-//       });
+//       return res.status(401).json({ error: "API authentication failed" });
 //     }
 
-//     // Use safe JSON parsing
 //     const searchData = await safeJsonParse(searchResponse);
-
-//     if (!searchResponse.ok) {
-//       return res.status(searchResponse.status).json({
-//         error: searchData.error || "Failed to initialize flight search",
-//       });
+//     if (!searchData.search_id) {
+//       return res.status(500).json({ error: "No search ID returned from API" });
 //     }
 
 //     const searchId = searchData.search_id;
 
-//     if (!searchId) {
-//       return res.status(500).json({ error: "No search ID received from API" });
-//     }
-
-//     // Poll for results
+//     // Polling for results
 //     let attempts = 0;
-//     const maxAttempts = 12; // 60 seconds total with 5s intervals
+//     const maxAttempts = 12; // 5s interval × 12 = 60s
 //     let results = null;
 
 //     while (attempts < maxAttempts && !results) {
 //       attempts++;
-//       await new Promise((resolve) => setTimeout(resolve, 5000));
+//       await new Promise((r) => setTimeout(r, 5000));
 
-//       try {
-//         const resultsResponse = await fetch(`${RESULTS_API}?uuid=${searchId}`, {
-//           headers: {
-//             "Accept-Encoding": "gzip, deflate",
-//             "X-Access-Token": TOKEN,
-//           },
-//         });
+//       const resultsResponse = await fetch(`${RESULTS_API}?uuid=${searchId}`, {
+//         headers: {
+//           "Accept-Encoding": "gzip, deflate",
+//           "X-Access-Token": TOKEN,
+//         },
+//       });
 
-//         // Check response status before parsing
-//         if (resultsResponse.status === 401) {
-//           throw new Error("API authentication failed during results polling");
-//         }
+//       const resultsData = await safeJsonParse(resultsResponse);
 
-//         // Use safe JSON parsing
-//         const resultsData = await safeJsonParse(resultsResponse);
-
-//         if (resultsResponse.ok) {
-//           // Check if we have actual results (not just search_id)
-//           if (
-//             Array.isArray(resultsData) &&
-//             resultsData.length > 0 &&
-//             !resultsData[0].search_id
-//           ) {
-//             results = resultsData;
-//             break;
-//           }
-//         } else {
-//           console.error("API error response:", resultsData);
-//         }
-//       } catch (pollError) {
-//         console.error("Polling error:", pollError);
-//         // Continue polling despite errors unless it's an auth error
-//         if (pollError.message.includes("authentication failed")) {
-//           break;
-//         }
+//       if (
+//         resultsResponse.ok &&
+//         Array.isArray(resultsData) &&
+//         resultsData.length > 0 &&
+//         !resultsData[0].search_id
+//       ) {
+//         results = resultsData;
+//         break;
 //       }
 //     }
 
 //     if (!results) {
-//       return res.status(408).json({
-//         error: "Flight search timeout. Please try again later.",
-//       });
+//       return res
+//         .status(408)
+//         .json({ error: "Flight search timeout. Please try again later." });
 //     }
 
-//     // Process results - convert currency and calculate total prices
+//     // Currency conversion (example rates)
+//     const conversionRates = { usd: 0.011, eur: 0.01, gbp: 0.009 };
 //     const processedResults = results.map((flight) => {
-//       // Note: API returns prices in RUB by default
-//       let price = flight.price || 0;
-
-//       // Simple currency conversion (in real app, use actual rates from API)
-//       const conversionRates = {
-//         usd: 0.011, // Example rate, use actual rates from API response
-//         eur: 0.01,
-//         gbp: 0.009,
-//       };
-
 //       const rate = conversionRates[currency.toLowerCase()] || 1;
-//       const convertedPrice = price * rate * parseInt(passengers);
-
 //       return {
 //         ...flight,
-//         price: convertedPrice.toFixed(2),
+//         price: (flight.price * rate * parseInt(passengers)).toFixed(2),
 //         currency: currency.toUpperCase(),
 //         passengers: parseInt(passengers),
 //       };
 //     });
 
-//     res.json({
-//       search_id: searchId,
-//       data: processedResults,
-//     });
+//     res.json({ search_id: searchId, data: processedResults });
 //   } catch (err) {
-//     console.error("Flight API Error:", err);
-
-//     // Provide more specific error messages
-//     if (err.message.includes("authentication failed")) {
-//       res.status(401).json({
-//         error: err.message,
-//         details:
-//           "Please check your AVIASALES_API_KEY and AVIASALES_MARKER environment variables",
-//         troubleshooting: [
-//           "Verify your API key and marker in the TravelPayouts dashboard",
-//           "Check that your IP is whitelisted if required",
-//           "Ensure your account has sufficient balance if the API requires prepayment",
-//           "Confirm the API key has the correct permissions for flight search",
-//         ],
-//       });
-//     } else {
-//       res
-//         .status(500)
-//         .json({ error: "Failed to fetch flight data: " + err.message });
-//     }
+//     console.error("Flight API Error:", err.message);
+//     res
+//       .status(err.message.includes("authentication") ? 401 : 500)
+//       .json({ error: err.message });
 //   }
 // });
 
-// // Additional endpoint to check search status
+// // Poll flight results by search ID
 // router.get("/flights/:searchId", authMiddleware, async (req, res) => {
 //   try {
 //     const { searchId } = req.params;
 
 //     const resultsResponse = await fetch(`${RESULTS_API}?uuid=${searchId}`, {
-//       headers: {
-//         "Accept-Encoding": "gzip, deflate",
-//         "X-Access-Token": TOKEN,
-//       },
+//       headers: { "Accept-Encoding": "gzip, deflate", "X-Access-Token": TOKEN },
 //     });
 
-//     // Check response status before parsing
 //     if (resultsResponse.status === 401) {
-//       return res.status(401).json({
-//         error: "API authentication failed. Please check your API credentials.",
-//       });
+//       return res.status(401).json({ error: "API authentication failed" });
 //     }
 
-//     // Use safe JSON parsing
 //     const resultsData = await safeJsonParse(resultsResponse);
-
 //     if (!resultsResponse.ok) {
 //       return res.status(resultsResponse.status).json({
 //         error:
@@ -356,68 +209,52 @@
 
 //     res.json({ data: resultsData });
 //   } catch (err) {
-//     console.error("Flight Results API Error:", err);
-
-//     if (err.message.includes("authentication failed")) {
-//       res.status(401).json({
-//         error: err.message,
-//         details:
-//           "Please check your AVIASALES_API_KEY and AVIASALES_MARKER environment variables",
-//       });
-//     } else {
-//       res
-//         .status(500)
-//         .json({ error: "Failed to fetch flight results: " + err.message });
-//     }
+//     console.error("Flight Results API Error:", err.message);
+//     res
+//       .status(err.message.includes("authentication") ? 401 : 500)
+//       .json({ error: err.message });
 //   }
 // });
 
-// // Health check endpoint to verify API connectivity
+// // Health check endpoint
 // router.get("/health", async (req, res) => {
 //   try {
 //     if (!TOKEN || !MARKER) {
-//       return res.status(500).json({
-//         status: "error",
-//         message: "API credentials not configured",
-//       });
+//       return res
+//         .status(500)
+//         .json({ status: "error", message: "API credentials not configured" });
 //     }
 
-//     // Make a simple request to check API connectivity
 //     const testResponse = await fetch(
 //       "https://api.travelpayouts.com/v1/latest_currencies",
 //       {
-//         headers: {
-//           "X-Access-Token": TOKEN,
-//         },
+//         headers: { "X-Access-Token": TOKEN },
 //       }
 //     );
 
-//     // Log response details for debugging
-//     console.log("Health check response status:", testResponse.status);
-
 //     if (testResponse.status === 200) {
-//       res.json({
-//         status: "success",
-//         message: "API connectivity verified",
-//       });
+//       res.json({ status: "success", message: "API connectivity verified" });
 //     } else if (testResponse.status === 401) {
-//       res.status(401).json({
-//         status: "error",
-//         message: "API authentication failed",
-//       });
+//       res
+//         .status(401)
+//         .json({ status: "error", message: "API authentication failed" });
 //     } else {
 //       const text = await testResponse.text();
-//       res.status(testResponse.status).json({
-//         status: "error",
-//         message: `API returned status: ${testResponse.status}`,
-//         response: text.substring(0, 200),
-//       });
+//       res
+//         .status(testResponse.status)
+//         .json({
+//           status: "error",
+//           message: `API returned status ${testResponse.status}`,
+//           response: text.substring(0, 200),
+//         });
 //     }
 //   } catch (err) {
-//     res.status(500).json({
-//       status: "error",
-//       message: "Failed to connect to API: " + err.message,
-//     });
+//     res
+//       .status(500)
+//       .json({
+//         status: "error",
+//         message: "Failed to connect to API: " + err.message,
+//       });
 //   }
 // });
 
@@ -446,80 +283,69 @@ const RESULTS_API = "https://api.travelpayouts.com/v1/flight_search_results";
 const TOKEN = process.env.AVIASALES_API_KEY;
 const MARKER = process.env.AVIASALES_MARKER;
 
-// Correct signature generation function
+// Generate Travelpayouts signature
 function generateSignature(params, token) {
-  const flattenValues = [];
-
-  // Order matters: marker, host, user_ip, locale, trip_class, passengers, segments
-  flattenValues.push(params.marker);
-  flattenValues.push(params.host);
-  flattenValues.push(params.user_ip);
-  flattenValues.push(params.locale);
-  flattenValues.push(params.trip_class);
-
-  flattenValues.push(params.passengers.adults);
-  flattenValues.push(params.passengers.children);
-  flattenValues.push(params.passengers.infants);
-
-  params.segments.forEach((seg) => {
-    flattenValues.push(seg.origin);
-    flattenValues.push(seg.destination);
-    flattenValues.push(seg.date);
-  });
-
-  const stringToHash = `${token}:${flattenValues.join(":")}`;
+  const values = [];
+  const processObject = (obj) => {
+    const sortedKeys = Object.keys(obj).sort();
+    for (const key of sortedKeys) {
+      const value = obj[key];
+      if (Array.isArray(value)) value.forEach((item) => processObject(item));
+      else if (typeof value === "object" && value !== null)
+        processObject(value);
+      else values.push(value.toString());
+    }
+  };
+  processObject(params);
+  const valuesString = values.join(":");
+  const stringToHash = `${token}:${valuesString}`;
   return crypto.createHash("md5").update(stringToHash).digest("hex");
 }
 
-// Helper to safely parse API JSON
+// Safe JSON parse helper
 async function safeJsonParse(response) {
   const text = await response.text();
-  if (text.includes("Unauthorized")) {
+  if (text.includes("Unauthorized"))
     throw new Error("API authentication failed: Unauthorized");
-  }
   try {
     return JSON.parse(text);
-  } catch {
-    throw new Error(`Invalid API response: ${text.substring(0, 100)}...`);
+  } catch (e) {
+    console.error("Failed to parse JSON. Raw Response:", text);
+    throw new Error(`Invalid API response: ${text.substring(0, 150)}...`);
   }
 }
 
-// Root endpoint
-router.get("/", (req, res) => {
-  res.json({ msg: "Welcome to KoalaRoute API!" });
-});
+// ✅ Root test
+router.get("/", (req, res) => res.json({ msg: "Welcome to KoalaRoute API!" }));
 
-// Dashboard endpoint (protected)
-router.get("/dashboard", authMiddleware, (req, res) => {
-  res.json({ msg: "Welcome back!", userId: req.user.id });
-});
+// ✅ Dashboard (protected)
+router.get("/dashboard", authMiddleware, (req, res) =>
+  res.json({ msg: "Welcome back!", userId: req.user.id })
+);
 
-// Flight search endpoint
+// ✅ Start flight search
 router.post("/flights", authMiddleware, async (req, res) => {
   try {
-    if (!TOKEN || !MARKER) {
-      return res.status(500).json({
-        error: "Server configuration error: API key or marker missing",
-      });
-    }
+    if (!TOKEN || !MARKER)
+      return res.status(500).json({ error: "API key or marker missing" });
 
     const {
       origin,
       destination,
       departure_at,
       return_at,
-      currency = "usd",
       passengers = 1,
       trip_class = "Y",
     } = req.body;
 
     if (!origin || !destination || !departure_at) {
-      return res.status(400).json({
-        error: "Origin, destination, and departure date are required",
-      });
+      return res
+        .status(400)
+        .json({
+          error: "Origin, destination, and departure date are required",
+        });
     }
 
-    // Prepare segments
     const segments = [
       {
         origin: origin.toUpperCase(),
@@ -535,172 +361,112 @@ router.post("/flights", authMiddleware, async (req, res) => {
       });
     }
 
-    const requestParams = {
+    const paramsForSignature = {
       marker: MARKER,
-      host: req.headers.host || "localhost",
+      host: process.env.AVIASALES_HOST || req.headers.host || "localhost",
       user_ip: req.ip || req.socket.remoteAddress || "127.0.0.1",
       locale: "en",
       trip_class: trip_class.toUpperCase(),
-      passengers: { adults: parseInt(passengers), children: 0, infants: 0 },
-      segments: segments,
+      passengers: {
+        adults: parseInt(passengers) || 1,
+        children: 0,
+        infants: 0,
+      },
+      segments,
     };
 
-    requestParams.signature = generateSignature(requestParams, TOKEN);
+    const requestPayload = {
+      ...paramsForSignature,
+      signature: generateSignature(paramsForSignature, TOKEN),
+    };
 
     const searchResponse = await fetch(SEARCH_API, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Access-Token": TOKEN },
-      body: JSON.stringify(requestParams),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Token": TOKEN,
+      },
+      body: JSON.stringify(requestPayload),
     });
-
-    if (searchResponse.status === 401) {
-      return res.status(401).json({ error: "API authentication failed" });
-    }
 
     const searchData = await safeJsonParse(searchResponse);
-    if (!searchData.search_id) {
-      return res.status(500).json({ error: "No search ID returned from API" });
-    }
 
-    const searchId = searchData.search_id;
+    if (!searchData.search_id)
+      throw new Error("API did not return a search_id");
 
-    // Polling for results
-    let attempts = 0;
-    const maxAttempts = 12; // 5s interval × 12 = 60s
-    let results = null;
-
-    while (attempts < maxAttempts && !results) {
-      attempts++;
-      await new Promise((r) => setTimeout(r, 5000));
-
-      const resultsResponse = await fetch(`${RESULTS_API}?uuid=${searchId}`, {
-        headers: {
-          "Accept-Encoding": "gzip, deflate",
-          "X-Access-Token": TOKEN,
-        },
-      });
-
-      const resultsData = await safeJsonParse(resultsResponse);
-
-      if (
-        resultsResponse.ok &&
-        Array.isArray(resultsData) &&
-        resultsData.length > 0 &&
-        !resultsData[0].search_id
-      ) {
-        results = resultsData;
-        break;
-      }
-    }
-
-    if (!results) {
-      return res
-        .status(408)
-        .json({ error: "Flight search timeout. Please try again later." });
-    }
-
-    // Currency conversion (example rates)
-    const conversionRates = { usd: 0.011, eur: 0.01, gbp: 0.009 };
-    const processedResults = results.map((flight) => {
-      const rate = conversionRates[currency.toLowerCase()] || 1;
-      return {
-        ...flight,
-        price: (flight.price * rate * parseInt(passengers)).toFixed(2),
-        currency: currency.toUpperCase(),
-        passengers: parseInt(passengers),
-      };
-    });
-
-    res.json({ search_id: searchId, data: processedResults });
+    // ✅ Send search_id back to frontend
+    res.json({ search_id: searchData.search_id });
   } catch (err) {
-    console.error("Flight API Error:", err.message);
+    console.error("Flight Init Error:", err.message);
     res
       .status(err.message.includes("authentication") ? 401 : 500)
       .json({ error: err.message });
   }
 });
 
-// Poll flight results by search ID
+// ✅ Poll results
 router.get("/flights/:searchId", authMiddleware, async (req, res) => {
   try {
     const { searchId } = req.params;
+    const { currency = "USD", passengers = 1 } = req.query;
 
     const resultsResponse = await fetch(`${RESULTS_API}?uuid=${searchId}`, {
-      headers: { "Accept-Encoding": "gzip, deflate", "X-Access-Token": TOKEN },
+      headers: {
+        "Accept-Encoding": "gzip, deflate",
+        "X-Access-Token": TOKEN,
+      },
     });
 
-    if (resultsResponse.status === 401) {
-      return res.status(401).json({ error: "API authentication failed" });
-    }
-
     const resultsData = await safeJsonParse(resultsResponse);
-    if (!resultsResponse.ok) {
-      return res.status(resultsResponse.status).json({
-        error:
-          "Failed to fetch flight results: " +
-          (resultsData.error || "Unknown error"),
+    console.log(
+      "Raw Travelpayouts Results:",
+      JSON.stringify(resultsData, null, 2)
+    );
+
+    const flightsArray = Array.isArray(resultsData.proposals)
+      ? resultsData.proposals
+      : [];
+
+    if (!flightsArray.length) {
+      return res.json({
+        status: "pending",
+        proposals: [],
+        message: "Results not ready yet, please keep polling.",
       });
     }
 
-    res.json({ data: resultsData });
+    // ✅ Normalize data so frontend can read proposals
+    const conversionRates = { USD: 1, EUR: 0.9, GBP: 0.8 };
+    const proposals = flightsArray.map((flight) => ({
+      airline: flight.airline || "N/A",
+      departure_at: flight.departure_at || "N/A",
+      return_at: flight.return_at || "N/A",
+      origin: flight.origin || "N/A",
+      destination: flight.destination || "N/A",
+      price: flight.unified_price
+        ? (
+            flight.unified_price *
+            (conversionRates[currency.toUpperCase()] || 1) *
+            parseInt(passengers)
+          ).toFixed(2)
+        : "N/A",
+      currency: currency.toUpperCase(),
+      passengers: parseInt(passengers),
+    }));
+
+    return res.json({ status: "complete", proposals });
   } catch (err) {
-    console.error("Flight Results API Error:", err.message);
+    console.error("Flight Poll Error:", err.message);
     res
       .status(err.message.includes("authentication") ? 401 : 500)
       .json({ error: err.message });
   }
 });
 
-// Health check endpoint
-router.get("/health", async (req, res) => {
-  try {
-    if (!TOKEN || !MARKER) {
-      return res
-        .status(500)
-        .json({ status: "error", message: "API credentials not configured" });
-    }
-
-    const testResponse = await fetch(
-      "https://api.travelpayouts.com/v1/latest_currencies",
-      {
-        headers: { "X-Access-Token": TOKEN },
-      }
-    );
-
-    if (testResponse.status === 200) {
-      res.json({ status: "success", message: "API connectivity verified" });
-    } else if (testResponse.status === 401) {
-      res
-        .status(401)
-        .json({ status: "error", message: "API authentication failed" });
-    } else {
-      const text = await testResponse.text();
-      res
-        .status(testResponse.status)
-        .json({
-          status: "error",
-          message: `API returned status ${testResponse.status}`,
-          response: text.substring(0, 200),
-        });
-    }
-  } catch (err) {
-    res
-      .status(500)
-      .json({
-        status: "error",
-        message: "Failed to connect to API: " + err.message,
-      });
-  }
-});
-
-// Debug endpoint to check environment variables
-router.get("/debug", (req, res) => {
-  res.json({
-    tokenPresent: !!TOKEN,
-    markerPresent: !!MARKER,
-    tokenPrefix: TOKEN ? TOKEN.substring(0, 10) + "..." : "undefined",
-    marker: MARKER,
-  });
-});
+// ✅ Health/debug
+router.get("/health", (req, res) => res.json({ status: "ok" }));
+router.get("/debug", (req, res) =>
+  res.json({ tokenPresent: !!TOKEN, markerPresent: !!MARKER })
+);
 
 export default router;
