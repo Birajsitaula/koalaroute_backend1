@@ -14,6 +14,7 @@ const app = express();
 const allowedOrigins = [
   "https://koalarouteai.com",
   "https://www.koalarouteai.com",
+  "http://localhost:5173/",
 ];
 const corsOptions = {
   origin: (origin, callback) => {
