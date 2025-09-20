@@ -11,31 +11,53 @@ import chatRouter from "./app/api/chat/route.js";
 dotenv.config();
 const app = express();
 
-// Middleware
-app.use(cors({ origin: "*", credentials: true }));
+const allowedOrigins = [
+  "https://koalarouteai.com",
+  "https://www.koalarouteai.com",
+];
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
 
-// some changes here
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
-app.use("/api/chat", chatRouter);
 app.use("/api/auth", authRoutes);
 app.use("/api/koalaroute", duffelFlights);
-
+app.use("/api/chat", chatRouter);
 app.use("/api/contact", contactRoutes);
+// ... other routes
 
-// MongoDB connection
+// Simple health check route for debugging
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
+// MongoDB Connection
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
-  console.error("❌ MONGO_URI is not defined. Did you set it in Railway?");
+  console.error("❌ FATAL ERROR: MONGO_URI is not defined.");
   process.exit(1);
 }
 
 mongoose
   .connect(mongoUri)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .then(() => console.log("✅ MongoDB connected."))
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1); // Exit if DB connection fails
+  });
 
-// Start server
+// **IMPORTANT**: Use Render's port or default to 5000
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server is live and listening on port ${PORT}`);
+});
