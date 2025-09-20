@@ -10,24 +10,7 @@ import chatRouter from "./app/api/chat/route.js";
 
 dotenv.config();
 const app = express();
-
-// const allowedOrigins = [
-//   "https://koalarouteai.com",
-//   "https://www.koalarouteai.com",
-//   "http://localhost:5173/",
-// ];
-// const corsOptions = {
-//   origin: (origin, callback) => {
-//     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-//       callback(null, true);
-//     } else {
-//       callback(new Error("Not allowed by CORS"));
-//     }
-//   },
-//   credentials: true,
-// };
-
-// app.use(cors(corsOptions));
+app.use(cors());
 app.use(express.json());
 
 // Routes
