@@ -3,10 +3,10 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import authRoutes from "./routes/auth.js";
-import koalaRoute from "./routes/koalaroutes.js";
+import duffelFlights from "./routes/duffelFlights.js";
+
 import contactRoutes from "./routes/contact.js";
 import chatRouter from "./app/api/chat/route.js";
-import aviasalesRouter from "./routes/aviasales.js";
 
 dotenv.config();
 const app = express();
@@ -20,9 +20,10 @@ app.use(express.json());
 // Routes
 app.use("/api/chat", chatRouter);
 app.use("/api/auth", authRoutes);
-app.use("/api/koalaroute", koalaRoute);
+
+app.use("/api/duffel", duffelFlights);
+
 app.use("/api/contact", contactRoutes);
-app.use("/api/aviasales", aviasalesRouter);
 
 // MongoDB connection
 const mongoUri = process.env.MONGO_URI;
