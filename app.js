@@ -22,8 +22,6 @@ app.use("/api/chat", chatRouter);
 app.use("/api/auth", authRoutes);
 app.use("/api/koalaroute", duffelFlights);
 
-app.use("/api/duffel", duffelFlights);
-
 app.use("/api/contact", contactRoutes);
 
 // MongoDB connection
