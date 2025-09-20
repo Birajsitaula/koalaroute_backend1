@@ -14,12 +14,13 @@ const app = express();
 // Middleware
 app.use(cors({ origin: "*", credentials: true }));
 
-// some chages here
+// some changes here
 app.use(express.json());
 
 // Routes
 app.use("/api/chat", chatRouter);
 app.use("/api/auth", authRoutes);
+app.use("/api/koalaroute", duffelFlights);
 
 app.use("/api/duffel", duffelFlights);
 
