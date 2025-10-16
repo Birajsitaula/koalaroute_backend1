@@ -1,8 +1,16 @@
 import express from "express";
 import fetch from "node-fetch";
 import "dotenv/config";
-
+import cors from "cors";
 const router = express.Router();
+
+// Add CORS middleware
+router.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    credentials: true,
+  })
+);
 
 // ========== Helper: Get Amadeus Token ==========
 async function getAccessToken() {
