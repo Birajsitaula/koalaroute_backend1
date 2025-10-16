@@ -1,227 +1,34 @@
-// import express from "express";
-// import fetch from "node-fetch";
-// import "dotenv/config";
-
-// const router = express.Router();
-
-// const DUFFEL_API_KEY = process.env.DUFFEL_API_KEY;
-// const DUFFEL_API_URL = "https://api.duffel.com/air/offer_requests";
-
-// // =============================
-// // 🔎 Step 1: Search Flights
-// // =============================
-// router.post("/flights", async (req, res) => {
-//   try {
-//     const {
-//       origin,
-//       destination,
-//       departure_at,
-//       return_at,
-//       passengers = 1,
-//     } = req.body;
-
-//     if (!origin || !destination || !departure_at) {
-//       return res
-//         .status(400)
-//         .json({ msg: "Origin, destination, and departure date are required" });
-//     }
-
-//     const offerRequestBody = {
-//       data: {
-//         slices: [
-//           { origin, destination, departure_date: departure_at },
-//           ...(return_at
-//             ? [
-//                 {
-//                   origin: destination,
-//                   destination: origin,
-//                   departure_date: return_at,
-//                 },
-//               ]
-//             : []),
-//         ],
-//         passengers: Array(passengers).fill({ type: "adult" }),
-//         cabin_class: "economy",
-//       },
-//     };
-
-//     const offerRequestResp = await fetch(DUFFEL_API_URL, {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${DUFFEL_API_KEY}`,
-//         "Duffel-Version": "v2",
-//         "Content-Type": "application/json",
-//       },
-//       body: JSON.stringify(offerRequestBody),
-//     });
-
-//     const offerRequestData = await offerRequestResp.json();
-
-//     if (!offerRequestData.data?.id) {
-//       return res
-//         .status(400)
-//         .json({ msg: "Duffel API error", error: offerRequestData });
-//     }
-
-//     const offerRequestId = offerRequestData.data.id;
-
-//     const offersResp = await fetch(
-//       `https://api.duffel.com/air/offers?offer_request_id=${offerRequestId}`,
-//       {
-//         method: "GET",
-//         headers: {
-//           Authorization: `Bearer ${DUFFEL_API_KEY}`,
-//           "Duffel-Version": "v2",
-//         },
-//       }
-//     );
-
-//     const offersData = await offersResp.json();
-
-//     const formattedOffers = (offersData.data || []).map((offer) => ({
-//       offer_id: offer.id,
-//       airline: offer.slices[0]?.segments[0]?.marketing_carrier?.name,
-//       airline_logo:
-//         offer.slices[0]?.segments[0]?.marketing_carrier?.logo_symbol_url,
-//       price: { amount: offer.total_amount, currency: offer.total_currency },
-//       slices: offer.slices.map((slice) => ({
-//         origin: slice.origin?.iata_code,
-//         destination: slice.destination?.iata_code,
-//         segments: slice.segments.map((seg) => ({
-//           flight_number: `${seg.marketing_carrier?.iata_code}${seg.marketing_carrier_flight_number}`,
-//           origin: {
-//             airport: seg.origin?.name,
-//             city: seg.origin?.city_name,
-//             iata: seg.origin?.iata_code,
-//             departure_time: seg.departing_at,
-//           },
-//           destination: {
-//             airport: seg.destination?.name,
-//             city: seg.destination?.city_name,
-//             iata: seg.destination?.iata_code,
-//             arrival_time: seg.arriving_at,
-//           },
-//           duration: seg.duration,
-//         })),
-//       })),
-//       payment_requirements: offer.payment_requirements,
-//     }));
-
-//     res.json({ status: "complete", offers: formattedOffers });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ msg: "Server error", error: err.message });
-//   }
-// });
-
-// // =============================
-// // 💳 Step 2: Book Flight
-// // =============================
-// router.post("/book", async (req, res) => {
-//   try {
-//     const { offer_id, passengers, payment } = req.body;
-
-//     if (!offer_id || !passengers) {
-//       return res
-//         .status(400)
-//         .json({ msg: "Offer ID and passengers are required" });
-//     }
-
-//     const bookingBody = {
-//       data: {
-//         selected_offers: [offer_id],
-//         passengers: passengers.map((p, i) => ({
-//           id: p.id || `passenger_${i + 1}`,
-//           title: p.title,
-//           given_name: p.given_name,
-//           family_name: p.family_name,
-//           gender: p.gender,
-//           born_on: p.born_on,
-//           email: p.email,
-//           phone_number: p.phone_number,
-//         })),
-//         payments: [
-//           {
-//             type: "balance", // only in test mode
-//             amount: payment.amount,
-//             currency: payment.currency,
-//           },
-//         ],
-//       },
-//     };
-
-//     const resp = await fetch("https://api.duffel.com/air/orders", {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${DUFFEL_API_KEY}`,
-//         "Duffel-Version": "v2",
-//         "Content-Type": "application/json",
-//       },
-//       body: JSON.stringify(bookingBody),
-//     });
-
-//     const data = await resp.json();
-//     res.json(data);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ msg: "Server error", error: err.message });
-//   }
-// });
-
-// // =============================
-// // 📦 Step 3: Get Booking Details by ID
-// // =============================
-// router.get("/orders/:id", async (req, res) => {
-//   try {
-//     const { id } = req.params;
-
-//     const resp = await fetch(`https://api.duffel.com/air/orders/${id}`, {
-//       method: "GET",
-//       headers: {
-//         Authorization: `Bearer ${DUFFEL_API_KEY}`,
-//         "Duffel-Version": "v2",
-//       },
-//     });
-
-//     const data = await resp.json();
-//     res.json(data);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ msg: "Server error", error: err.message });
-//   }
-// });
-
-// // =============================
-// // 📋 Step 4: List All Orders
-// // =============================
-// router.get("/orders", async (req, res) => {
-//   try {
-//     const resp = await fetch("https://api.duffel.com/air/orders", {
-//       method: "GET",
-//       headers: {
-//         Authorization: `Bearer ${DUFFEL_API_KEY}`,
-//         "Duffel-Version": "v2",
-//       },
-//     });
-
-//     const data = await resp.json();
-//     res.json(data);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ msg: "Server error", error: err.message });
-//   }
-// });
-
-// export default router;
-
 import express from "express";
 import fetch from "node-fetch";
 import "dotenv/config";
 
 const router = express.Router();
 
-const DUFFEL_API_KEY = process.env.DUFFEL_API_KEY;
-const DUFFEL_API_URL = "https://api.duffel.com/air/offer_requests";
+// =========================
+// 🔐 Amadeus credentials
+// =========================
+const AMADEUS_CLIENT_ID = process.env.AMADEUS_CLIENT_ID;
+const AMADEUS_CLIENT_SECRET = process.env.AMADEUS_CLIENT_SECRET;
+
+// Get access token from Amadeus
+async function getAmadeusAccessToken() {
+  const resp = await fetch(
+    "https://test.api.amadeus.com/v1/security/oauth2/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: AMADEUS_CLIENT_ID,
+        client_secret: AMADEUS_CLIENT_SECRET,
+      }),
+    }
+  );
+
+  const data = await resp.json();
+  if (!data.access_token) throw new Error("Failed to get Amadeus access token");
+  return data.access_token;
+}
 
 // =============================
 // 🔎 Step 1: Search Flights
@@ -242,87 +49,55 @@ router.post("/flights", async (req, res) => {
         .json({ msg: "Origin, destination, and departure date are required" });
     }
 
-    const offerRequestBody = {
-      data: {
-        slices: [
-          { origin, destination, departure_date: departure_at },
-          ...(return_at
-            ? [
-                {
-                  origin: destination,
-                  destination: origin,
-                  departure_date: return_at,
-                },
-              ]
-            : []),
-        ],
-        passengers: Array(passengers).fill({ type: "adult" }),
-        cabin_class: "economy",
-      },
-    };
+    const token = await getAmadeusAccessToken();
 
-    // Create offer request
-    const offerRequestResp = await fetch(DUFFEL_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${DUFFEL_API_KEY}`,
-        "Duffel-Version": "v2",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(offerRequestBody),
+    const searchParams = new URLSearchParams({
+      originLocationCode: origin,
+      destinationLocationCode: destination,
+      departureDate: departure_at,
+      adults: passengers.toString(),
+      currencyCode: "USD",
     });
 
-    const offerRequestData = await offerRequestResp.json();
+    if (return_at) searchParams.append("returnDate", return_at);
 
-    if (!offerRequestData.data?.id) {
-      return res
-        .status(400)
-        .json({ msg: "Duffel API error", error: offerRequestData });
-    }
-
-    const offerRequestId = offerRequestData.data.id;
-
-    // Get flight offers
-    const offersResp = await fetch(
-      `https://api.duffel.com/air/offers?offer_request_id=${offerRequestId}`,
+    const resp = await fetch(
+      `https://test.api.amadeus.com/v2/shopping/flight-offers?${searchParams}`,
       {
-        method: "GET",
         headers: {
-          Authorization: `Bearer ${DUFFEL_API_KEY}`,
-          "Duffel-Version": "v2",
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
-    const offersData = await offersResp.json();
+    const data = await resp.json();
 
-    const formattedOffers = (offersData.data || []).map((offer) => ({
+    if (!data.data) {
+      return res.status(400).json({ msg: "Amadeus API error", error: data });
+    }
+
+    const formattedOffers = data.data.map((offer) => ({
       offer_id: offer.id,
-      airline: offer.slices[0]?.segments[0]?.marketing_carrier?.name,
-      airline_logo:
-        offer.slices[0]?.segments[0]?.marketing_carrier?.logo_symbol_url,
-      price: { amount: offer.total_amount, currency: offer.total_currency },
-      slices: offer.slices.map((slice) => ({
-        origin: slice.origin?.iata_code,
-        destination: slice.destination?.iata_code,
-        segments: slice.segments.map((seg) => ({
-          flight_number: `${seg.marketing_carrier?.iata_code}${seg.marketing_carrier_flight_number}`,
+      price: {
+        amount: offer.price.total,
+        currency: offer.price.currency,
+      },
+      itineraries: offer.itineraries.map((itinerary) => ({
+        duration: itinerary.duration,
+        segments: itinerary.segments.map((seg) => ({
+          flight_number: `${seg.carrierCode}${seg.number}`,
           origin: {
-            airport: seg.origin?.name,
-            city: seg.origin?.city_name,
-            iata: seg.origin?.iata_code,
-            departure_time: seg.departing_at,
+            iata: seg.departure.iataCode,
+            at: seg.departure.at,
           },
           destination: {
-            airport: seg.destination?.name,
-            city: seg.destination?.city_name,
-            iata: seg.destination?.iata_code,
-            arrival_time: seg.arriving_at,
+            iata: seg.arrival.iataCode,
+            at: seg.arrival.at,
           },
-          duration: seg.duration,
+          carrier: seg.carrierCode,
+          aircraft: seg.aircraft?.code,
         })),
       })),
-      payment_requirements: offer.payment_requirements, // for frontend to show payment options
     }));
 
     res.json({ status: "complete", offers: formattedOffers });
@@ -337,93 +112,78 @@ router.post("/flights", async (req, res) => {
 // =============================
 router.post("/book", async (req, res) => {
   try {
-    const { offer_id, passengers, payment } = req.body;
+    const { offer_id, passengers } = req.body;
 
-    if (!offer_id || !passengers || !payment) {
+    if (!offer_id || !passengers) {
       return res
         .status(400)
-        .json({ msg: "Offer, passengers, and payment required" });
+        .json({ msg: "Offer ID and passengers are required" });
     }
 
-    const bookingBody = {
-      data: {
-        selected_offers: [offer_id],
-        passengers: passengers.map((p, i) => ({
-          id: p.id || `passenger_${i + 1}`,
-          title: p.title,
-          given_name: p.given_name,
-          family_name: p.family_name,
-          gender: p.gender,
-          born_on: p.born_on,
-          email: p.email,
-          phone_number: p.phone_number,
-        })),
-        payments: [
-          {
-            type: payment.type || "balance", // in test mode
-            amount: payment.amount,
-            currency: payment.currency,
+    const token = await getAmadeusAccessToken();
+
+    // Step 1: Confirm the price (Flight Price endpoint)
+    const priceConfirmResp = await fetch(
+      "https://test.api.amadeus.com/v1/shopping/flight-offers/pricing",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            type: "flight-offers-pricing",
+            flightOffers: [{ id: offer_id }],
           },
-        ],
-      },
-    };
+        }),
+      }
+    );
 
-    const resp = await fetch("https://api.duffel.com/air/orders", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${DUFFEL_API_KEY}`,
-        "Duffel-Version": "v2",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(bookingBody),
-    });
+    const priceData = await priceConfirmResp.json();
 
-    const data = await resp.json();
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Server error", error: err.message });
-  }
-});
+    if (!priceData.data) {
+      return res
+        .status(400)
+        .json({ msg: "Pricing confirmation failed", error: priceData });
+    }
 
-// =============================
-// 📦 Step 3: Get Booking Details by ID
-// =============================
-router.get("/orders/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+    // Step 2: Create the booking
+    const bookingResp = await fetch(
+      "https://test.api.amadeus.com/v1/booking/flight-orders",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            type: "flight-order",
+            flightOffers: [priceData.data.flightOffers[0]],
+            travelers: passengers.map((p, i) => ({
+              id: `${i + 1}`,
+              dateOfBirth: p.born_on,
+              name: { firstName: p.given_name, lastName: p.family_name },
+              gender: p.gender,
+              contact: {
+                emailAddress: p.email,
+                phones: [
+                  {
+                    deviceType: "MOBILE",
+                    countryCallingCode: "977",
+                    number: p.phone_number,
+                  },
+                ],
+              },
+            })),
+          },
+        }),
+      }
+    );
 
-    const resp = await fetch(`https://api.duffel.com/air/orders/${id}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${DUFFEL_API_KEY}`,
-        "Duffel-Version": "v2",
-      },
-    });
-
-    const data = await resp.json();
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Server error", error: err.message });
-  }
-});
-
-// =============================
-// 📋 Step 4: List All Orders
-// =============================
-router.get("/orders", async (req, res) => {
-  try {
-    const resp = await fetch("https://api.duffel.com/air/orders", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${DUFFEL_API_KEY}`,
-        "Duffel-Version": "v2",
-      },
-    });
-
-    const data = await resp.json();
-    res.json(data);
+    const bookingData = await bookingResp.json();
+    res.json(bookingData);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Server error", error: err.message });
