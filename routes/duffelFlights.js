@@ -6,12 +6,13 @@ import cors from "cors";
 const router = express.Router();
 
 // // CORS Middleware
-// router.use(
-//   cors({
-//     origin: process.env.FRONTEND_URL || "http://localhost:5000",
-//     credentials: true,
-//   })
-// );
+router.use(
+  cors({
+    // origin: process.env.FRONTEND_URL || "http://localhost:5000",
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+  })
+);
 
 // ========== Helper: Get Amadeus Token ==========
 async function getAccessToken() {
