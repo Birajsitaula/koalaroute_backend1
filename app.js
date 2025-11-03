@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import duffelFlights from "./routes/duffelFlights.js";
+import hotelRoutes from "./routes/hotelRoutes.js";
 
 import contactRoutes from "./routes/contact.js";
 import chatRouter from "./app/api/chat/route.js";
@@ -19,6 +20,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api", duffelFlights);
 app.use("/api/chat", chatRouter);
 app.use("/api/contact", contactRoutes);
+app.use("/api", hotelRoutes);
+
 // ... other routes
 
 // Simple health check route for debugging
