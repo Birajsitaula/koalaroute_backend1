@@ -3,9 +3,6 @@ import express from "express";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 
-// This is a simple chat route that interacts with OpenAI's API
-import Chat from "../../../models/Chat.js";
-
 dotenv.config();
 const router = express.Router();
 
