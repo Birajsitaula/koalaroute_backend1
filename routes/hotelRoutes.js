@@ -64,4 +64,41 @@ router.get("/hotels", async (req, res) => {
   }
 });
 
+// 🔹 3. Book a hotel offer
+router.post("/hotels/book", async (req, res) => {
+  const { offerId, guests } = req.body;
+
+  if (!offerId || !guests) {
+    return res.status(400).json({
+      error: "Missing required fields: offerId and guests",
+    });
+  }
+
+  try {
+    const token = await getAccessToken();
+
+    const response = await fetch(
+      "https://test.api.amadeus.com/v1/booking/hotel-bookings",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            offerId, // 👈 use offerId returned from /hotels
+            guests, // 👈 guest details from your form
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
